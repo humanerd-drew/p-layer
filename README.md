@@ -2,6 +2,8 @@
 
 **7 layers. 1 memory. Zero chaos.**
 
+[**한국어**](./README.ko.md)
+
 Organize your AI agent's memory into governance layers — from immutable rules (P0) to incident retrospectives (P6). Each layer has a contract: who can write, when to query, how to maintain.
 
 ```python
