@@ -1,6 +1,6 @@
 [project]
 name = "p-layers"
-version = "0.1.0"
+version = "0.1.2"
 description = "7 governance layers for AI agent memory — P0-P6 with KnowledgeDB, MCP server, and wiki-compile"
 requires-python = ">=3.10"
 dependencies = [

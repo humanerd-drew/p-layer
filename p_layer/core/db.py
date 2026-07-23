@@ -97,6 +97,23 @@ class KnowledgeDB:
             path.parent.mkdir(parents=True, exist_ok=True)
             self._sqlite_conn = sqlite3.connect(str(path))
             self._sqlite_conn.row_factory = sqlite3.Row
+            self._sqlite_conn.executescript("""
+                CREATE TABLE IF NOT EXISTS memory (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fact TEXT NOT NULL,
+                    type TEXT NOT NULL DEFAULT 'fact',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+                    fact, type,
+                    tokenize='porter unicode61',
+                    content='memory',
+                    content_rowid='id'
+                );
+                CREATE TRIGGER IF NOT EXISTS memory_ai AFTER INSERT ON memory BEGIN
+                    INSERT INTO memory_fts(rowid, fact, type) VALUES (new.id, new.fact, new.type);
+                END;
+            """)
         return self._sqlite_conn
 
     def set_mode(self, mode: str):
@@ -187,7 +204,7 @@ class KnowledgeDB:
     def _sqlite_insert(self, data: dict) -> dict:
         conn = self._connect_sqlite()
         conn.execute(
-            "INSERT INTO memory_fts (fact, type) VALUES (?, ?)",
+            "INSERT INTO memory (fact, type) VALUES (?, ?)",
             (data["content"], data["type"])
         )
         conn.commit()
