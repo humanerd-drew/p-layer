@@ -1,0 +1,5 @@
+.knowledge/
+wiki/compiled/
+*.db
+*.db-shm
+*.db-wal
