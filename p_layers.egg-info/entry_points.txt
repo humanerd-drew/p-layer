@@ -1,2 +1,0 @@
-[console_scripts]
-p-layer-mcp = p_layer.mcp.server:main

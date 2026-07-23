@@ -1,6 +1,0 @@
-mcp>=1.0
-
-[pg]
-psycopg2-binary>=2.9
-pgvector>=0.3
-numpy>=1.24
