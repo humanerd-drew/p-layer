@@ -1,4 +1,4 @@
-"""knowledge-system — Unified memory with PostgreSQL (primary) + SQLite (fallback)."""
+"""p-layer core — KnowledgeDB with PostgreSQL (primary) + SQLite (fallback)."""
 
 from .db import KnowledgeDB as KnowledgeDB
 from .memory import recall_ranked as recall_ranked

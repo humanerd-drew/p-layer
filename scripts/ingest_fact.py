@@ -5,11 +5,13 @@ Usage:
     python3 scripts/ingest_fact.py "some fact" [type]
 """
 
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
-DB_DIR = Path(__file__).resolve().parent.parent / ".knowledge"
+_KDIR = Path(os.environ.get("KNOWLEDGE_DB_DIR", str(Path.cwd() / ".knowledge")))
+DB_DIR = _KDIR
 DB = DB_DIR / "knowledge.db"
 
 

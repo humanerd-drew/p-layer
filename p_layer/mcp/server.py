@@ -19,8 +19,8 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-from knowledge_system.core.db import KnowledgeDB
-from knowledge_system.core.memory import recall_ranked, _DEFAULT_TTL
+from p_layer.core.db import KnowledgeDB
+from p_layer.core.memory import recall_ranked, _DEFAULT_TTL
 
 server = Server("knowledge-system")
 

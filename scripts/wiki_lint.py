@@ -7,10 +7,11 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 
-DEFAULT_WIKI = Path(__file__).resolve().parent.parent / "wiki" / "compiled"
+DEFAULT_WIKI = Path(os.environ.get("KNOWLEDGE_WIKI_DIR", str(Path.cwd() / "wiki" / "compiled")))
 
 
 def lint_wiki(wiki_dir: Path):

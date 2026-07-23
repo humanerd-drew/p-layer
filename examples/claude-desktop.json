@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "p-layer": {
+      "command": "python3",
+      "args": ["-m", "p_layer.mcp.server"],
+      "env": {
+        "KNOWLEDGE_PG_DSN": "",
+        "KNOWLEDGE_DB_DIR": "$HOME/.p-layer"
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+name: Python package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install
+      run: |
+        pip install -e .
+        python3 -c "from p_layer.core.db import KnowledgeDB; print('Import OK')"
+    - name: Test SQLite mode
+      run: |
+        python3 -c "
+from p_layer.core.db import KnowledgeDB
+db = KnowledgeDB(mode='sqlite')
+result = db.insert(layer='P5', type='test', content='CI test', who='ci')
+assert result.get('id'), 'insert failed'
+results = db.search('CI test')
+assert len(results) > 0, 'search failed'
+print('All tests passed')
+"

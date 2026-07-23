@@ -10,13 +10,15 @@ Usage:
 
 import argparse
 import json
+import os
 import sqlite3
 from collections import defaultdict
 from pathlib import Path
 
-DB_DIR = Path(__file__).resolve().parent.parent / ".knowledge"
+_KDIR = Path(os.environ.get("KNOWLEDGE_DB_DIR", str(Path.cwd() / ".knowledge")))
+DB_DIR = _KDIR
 DB = DB_DIR / "knowledge.db"
-DEFAULT_OUTPUT = Path(__file__).resolve().parent.parent / "wiki" / "compiled"
+DEFAULT_OUTPUT = Path(os.environ.get("KNOWLEDGE_WIKI_DIR", str(Path.cwd() / "wiki" / "compiled")))
 
 
 def get_entity_relations(db, entity_id: int) -> list:

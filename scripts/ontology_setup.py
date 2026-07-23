@@ -9,12 +9,14 @@ Usage:
 """
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 
-from knowledge_system.core.ontology import TYPE_HIERARCHY, RELATION_CONSTRAINTS
+from p_layer.core.ontology import TYPE_HIERARCHY, RELATION_CONSTRAINTS
 
-DB_DIR = Path(__file__).resolve().parent.parent / ".knowledge"
+_KDIR = Path(os.environ.get("KNOWLEDGE_DB_DIR", str(Path.cwd() / ".knowledge")))
+DB_DIR = _KDIR
 DB = DB_DIR / "knowledge.db"
 
 SCHEMA = f"""
