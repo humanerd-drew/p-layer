@@ -7,7 +7,7 @@ Add the MCP server to your `opencode.jsonc`:
   "mcp": {
     "p-layer": {
       "type": "local",
-      "command": ["python3", "-m", "knowledge_system.mcp.server"],
+      "command": ["python3", "-m", "p_layer.mcp.server"],
       "env": {
         "KNOWLEDGE_PG_DSN": "{env:KNOWLEDGE_PG_DSN}",
         "KNOWLEDGE_DB_DIR": "{env:HOME}/.agent/memory"

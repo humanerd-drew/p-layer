@@ -6,9 +6,70 @@
 
 Organize your AI agent's memory into governance layers — from immutable rules (P0) to incident retrospectives (P6). Each layer has a contract: who can write, when to query, how to maintain.
 
+## Quick Start — Your Own Database
+
+```bash
+pip install p-layers
+```
+
+### SQLite mode (zero config, single user)
+
+```bash
+# Initialize
+p-layer-init --init
+# or: python3 -m p_layer --init
+
+# Start MCP server
+p-layer-mcp
+# or: python3 -m p_layer --serve
+```
+
+### PostgreSQL mode (multi-agent, vector search)
+
+```bash
+pip install p-layers[pg]
+
+# Point at your PostgreSQL DB
+export KNOWLEDGE_PG_DSN="dbname=your_knowledge_db host=localhost user=me"
+
+# Initialize the schema
+python3 -m p_layer --init-pg "$KNOWLEDGE_PG_DSN"
+
+# Start MCP server
+p-layer-mcp
+```
+
+### Verify it works
+
 ```python
-pip install p-layers          # repo: p-layer, PyPI: p-layers, import: p_layer
-python3 -m p_layer.mcp.server  # starts MCP server with SQLite (zero config)
+from p_layer.core.db import KnowledgeDB
+
+db = KnowledgeDB()
+db.insert(layer="P5", type="fact",
+          content="My first fact in my own database.",
+          who="system:quickstart")
+results = db.search("first fact", limit=5)
+print(f"Found {len(results)} results")
+db.close()
+```
+
+### Check status
+
+```bash
+python3 -m p_layer --status
+# → { "mode": "sqlite", "pg_available": false, "write_test": "PASS", ... }
+```
+
+### What's in your database
+
+The DB is created at `$KNOWLEDGE_DB_DIR/knowledge.db` (default: `./.knowledge/knowledge.db`) in SQLite mode. For PostgreSQL, use the DSN you provided.
+
+```
+.knowledge/
+└── knowledge.db          ← all your facts, decisions, patterns, incidents
+    ├── memory table       ← the content (with FTS5 full-text search)
+    ├── entities table     ← your ontology nodes (24 types)
+    └── relations table    ← edges between entities (depends_on, fixed_by, ...)
 ```
 
 ## The 7 Layers

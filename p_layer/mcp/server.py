@@ -12,6 +12,7 @@ Tools:
 """
 
 import json
+import logging
 import sys
 from datetime import datetime, timezone
 
@@ -22,15 +23,12 @@ from mcp.types import Tool, TextContent
 from p_layer.core.db import KnowledgeDB
 from p_layer.core.memory import recall_ranked, _DEFAULT_TTL
 
+logger = logging.getLogger(__name__)
 server = Server("knowledge-system")
 
 
 def get_db():
     return KnowledgeDB()
-
-
-def _has_pg(db) -> bool:
-    return db._pg_conn is not None
 
 
 @server.list_tools()
@@ -137,6 +135,11 @@ async def list_tools() -> list[Tool]:
                 "required": ["version_id"],
             },
         ),
+        Tool(
+            name="knowledge_ontology-status",
+            description="Show ontology graph health — entity/relation counts, type coverage, orphans",
+            inputSchema={"type": "object", "properties": {}},
+        ),
     ]
 
 
@@ -144,185 +147,226 @@ async def list_tools() -> list[Tool]:
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     db = get_db()
 
-    if name == "knowledge_remember":
-        fact = arguments["fact"]
-        typ = arguments.get("type", "fact")
-        confidence = max(0.0, min(1.0, float(arguments.get("confidence", 1.0))))
-        ttl = arguments.get("ttl_days", _DEFAULT_TTL.get(typ, 90))
-        version_id = arguments.get("version_id", "latest")
+    try:
+        if name == "knowledge_remember":
+            fact = arguments["fact"]
+            typ = arguments.get("type", "fact")
+            confidence = max(0.0, min(1.0, float(arguments.get("confidence", 1.0))))
+            ttl = arguments.get("ttl_days", _DEFAULT_TTL.get(typ, 90))
+            version_id = arguments.get("version_id", "latest")
 
-        result = db.insert(
-            layer="P6", type=typ, content=fact,
-            who="tool:knowledge-system",
-            source="knowledge_remember",
-        )
+            result = db.insert(
+                layer="P6", type=typ, content=fact,
+                who="tool:knowledge-system",
+                source="knowledge_remember",
+            )
 
-        if _has_pg(db) and isinstance(result, dict) and result.get("id"):
-            try:
+            if db.has_pg and isinstance(result, dict) and result.get("id"):
+                try:
+                    cur = db._pg_conn.cursor()
+                    cur.execute(
+                        "UPDATE entries SET confidence = %s, ttl_days = %s, version_id = %s WHERE id = %s",
+                        (confidence, ttl, version_id, result["id"]),
+                    )
+                    db._pg_conn.commit()
+                except Exception:
+                    try:
+                        db._pg_conn.rollback()
+                    except Exception:
+                        logger.warning("rollback failed after remember", exc_info=True)
+
+            return [TextContent(type="text", text=str(result))]
+
+        elif name == "knowledge_recall":
+            query = arguments["query"]
+            limit = int(arguments.get("limit", 10))
+            serendipity = arguments.get("serendipity", True)
+
+            if not query.strip():
+                results = db.search("", layers=["P5", "P6"], limit=limit)
+            else:
+                results = recall_ranked(db, query, limit=limit, layers=["P5", "P6"], serendipity=serendipity)
+            return [TextContent(type="text", text=str(results))]
+
+        elif name == "knowledge_forget":
+            mem_id = int(arguments["id"])
+            reason = arguments.get("reason", "")
+
+            if db.has_pg:
                 cur = db._pg_conn.cursor()
                 cur.execute(
-                    "UPDATE entries SET confidence = %s, ttl_days = %s, version_id = %s WHERE id = %s",
-                    (confidence, ttl, version_id, result["id"]),
-                )
-                db._pg_conn.commit()
-            except Exception:
-                db._pg_conn.rollback()
-
-        return [TextContent(type="text", text=str(result))]
-
-    elif name == "knowledge_recall":
-        query = arguments["query"]
-        limit = int(arguments.get("limit", 10))
-        serendipity = arguments.get("serendipity", True)
-
-        if not query.strip():
-            results = db.search("", layers=["P5", "P6"], limit=limit)
-        else:
-            results = recall_ranked(db, query, limit=limit, layers=["P5", "P6"], serendipity=serendipity)
-        return [TextContent(type="text", text=str(results))]
-
-    elif name == "knowledge_forget":
-        mem_id = int(arguments["id"])
-        reason = arguments.get("reason", "")
-
-        if _has_pg(db):
-            cur = db._pg_conn.cursor()
-            cur.execute(
-                "UPDATE entries SET superseded_by = id, confidence = GREATEST(confidence, 0.0), "
-                "updated_at = NOW() WHERE id = %s",
-                (mem_id,),
-            )
-            db._pg_conn.commit()
-            msg = {"superseded": cur.rowcount > 0, "id": mem_id}
-            if reason:
-                msg["reason"] = reason
-            return [TextContent(type="text", text=str(msg))]
-
-        cur = db._connect_sqlite().execute(
-            "DELETE FROM memory_fts WHERE rowid = ?", (mem_id,)
-        )
-        return [TextContent(type="text", text=str({"deleted": cur.rowcount > 0}))]
-
-    elif name == "knowledge_memory-stats":
-        counts = db.get_layer_count()
-        if _has_pg(db):
-            cur = db._pg_conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM entries WHERE superseded_by IS NULL")
-            active = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM entries WHERE superseded_by IS NOT NULL")
-            superseded = cur.fetchone()[0]
-        else:
-            active = sum(counts.values())
-            superseded = 0
-        return [TextContent(type="text", text=str({
-            "total": sum(counts.values()) if isinstance(counts, dict) else 0,
-            "active": active,
-            "superseded": superseded,
-            "byLayer": counts,
-        }))]
-
-    elif name == "knowledge_update":
-        mem_id = int(arguments["id"])
-        fact = arguments.get("fact")
-        typ = arguments.get("type")
-        confidence = arguments.get("confidence")
-
-        if _has_pg(db):
-            cur = db._pg_conn.cursor()
-            if fact:
-                cur.execute(
-                    "UPDATE entries SET superseded_by = id, updated_at = NOW() WHERE id = %s",
+                    "UPDATE entries SET superseded_by = id, confidence = GREATEST(confidence, 0.0), "
+                    "updated_at = NOW() WHERE id = %s",
                     (mem_id,),
                 )
-                new_result = db.insert(
-                    layer="P6", type=typ or "fact", content=fact,
-                    who="tool:knowledge-system", source="knowledge_update",
-                )
-                if isinstance(new_result, dict) and new_result.get("id"):
+                db._pg_conn.commit()
+                msg = {"superseded": cur.rowcount > 0, "id": mem_id}
+                if reason:
+                    msg["reason"] = reason
+                return [TextContent(type="text", text=str(msg))]
+
+            cur = db._connect_sqlite().execute(
+                "DELETE FROM memory_fts WHERE rowid = ?", (mem_id,)
+            )
+            return [TextContent(type="text", text=str({"deleted": cur.rowcount > 0}))]
+
+        elif name == "knowledge_memory-stats":
+            counts = db.get_layer_count()
+            if db.has_pg:
+                cur = db._pg_conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM entries WHERE superseded_by IS NULL")
+                active = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM entries WHERE superseded_by IS NOT NULL")
+                superseded = cur.fetchone()[0]
+                cur.close()
+            else:
+                active = sum(counts.values())
+                superseded = 0
+            return [TextContent(type="text", text=str({
+                "total": sum(counts.values()) if isinstance(counts, dict) else 0,
+                "active": active,
+                "superseded": superseded,
+                "byLayer": counts,
+            }))]
+
+        elif name == "knowledge_update":
+            mem_id = int(arguments["id"])
+            fact = arguments.get("fact")
+            typ = arguments.get("type")
+            confidence = arguments.get("confidence")
+
+            if db.has_pg:
+                cur = db._pg_conn.cursor()
+                if fact:
                     cur.execute(
-                        "UPDATE entries SET version_id = 'v2' WHERE id = %s",
-                        (new_result["id"],),
+                        "UPDATE entries SET superseded_by = id, updated_at = NOW() WHERE id = %s",
+                        (mem_id,),
                     )
-                db._pg_conn.commit()
-                return [TextContent(type="text", text=str({
-                    "updated": True, "superseded_id": mem_id,
-                    "new_id": new_result.get("id") if isinstance(new_result, dict) else None,
-                }))]
+                    new_result = db.insert(
+                        layer="P6", type=typ or "fact", content=fact,
+                        who="tool:knowledge-system", source="knowledge_update",
+                    )
+                    if isinstance(new_result, dict) and new_result.get("id"):
+                        cur.execute(
+                            "UPDATE entries SET version_id = 'v2' WHERE id = %s",
+                            (new_result["id"],),
+                        )
+                    db._pg_conn.commit()
+                    return [TextContent(type="text", text=str({
+                        "updated": True, "superseded_id": mem_id,
+                        "new_id": new_result.get("id") if isinstance(new_result, dict) else None,
+                    }))]
 
-            updates = []
-            params = []
-            if confidence is not None:
-                updates.append("confidence = %s")
-                params.append(max(0.0, min(1.0, float(confidence))))
-            if typ:
-                updates.append("type = %s")
-                params.append(typ)
-            if updates:
-                params.append(mem_id)
-                cur.execute(
-                    f"UPDATE entries SET {', '.join(updates)}, updated_at = NOW() WHERE id = %s",
-                    params,
-                )
-                db._pg_conn.commit()
-                return [TextContent(type="text", text=str({"updated": cur.rowcount > 0}))]
+                updates = []
+                params = []
+                if confidence is not None:
+                    updates.append("confidence = %s")
+                    params.append(max(0.0, min(1.0, float(confidence))))
+                if typ:
+                    updates.append("type = %s")
+                    params.append(typ)
+                if updates:
+                    params.append(mem_id)
+                    cur.execute(
+                        f"UPDATE entries SET {', '.join(updates)}, updated_at = NOW() WHERE id = %s",
+                        params,
+                    )
+                    db._pg_conn.commit()
+                    cur.close()
+                    return [TextContent(type="text", text=str({"updated": cur.rowcount > 0}))]
+                cur.close()
 
-        return [TextContent(type="text", text=str({"updated": False}))]
+            return [TextContent(type="text", text=str({"updated": False}))]
 
-    elif name == "knowledge_snapshot-create":
-        version_id = arguments["version_id"]
-        label = arguments.get("label", "")
+        elif name == "knowledge_snapshot-create":
+            version_id = arguments["version_id"]
+            label = arguments.get("label", "")
 
-        if not _has_pg(db):
-            return [TextContent(type="text", text=str({"error": "PgVector required for snapshots"}))]
+            if not db.has_pg:
+                return [TextContent(type="text", text=str({"error": "PgVector required for snapshots"}))]
 
-        cur = db._pg_conn.cursor()
-        cur.execute("SELECT ARRAY_AGG(id) FROM entries WHERE superseded_by IS NULL")
-        entry_ids = cur.fetchone()[0] or []
+            cur = db._pg_conn.cursor()
+            cur.execute("SELECT ARRAY_AGG(id) FROM entries WHERE superseded_by IS NULL")
+            entry_ids = cur.fetchone()[0] or []
 
-        cur.execute(
-            "INSERT INTO memory_snapshots (version_id, label, entry_ids) "
-            "VALUES (%s, %s, %s) "
-            "ON CONFLICT (version_id) DO UPDATE SET label = EXCLUDED.label, "
-            "entry_ids = EXCLUDED.entry_ids, created_at = NOW()",
-            (version_id, label, entry_ids),
-        )
-        db._pg_conn.commit()
-        return [TextContent(type="text", text=str({
-            "version_id": version_id, "entries_snapshot": len(entry_ids),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }))]
+            cur.execute(
+                "INSERT INTO memory_snapshots (version_id, label, entry_ids) "
+                "VALUES (%s, %s, %s) "
+                "ON CONFLICT (version_id) DO UPDATE SET label = EXCLUDED.label, "
+                "entry_ids = EXCLUDED.entry_ids, created_at = NOW()",
+                (version_id, label, entry_ids),
+            )
+            db._pg_conn.commit()
+            cur.close()
+            return [TextContent(type="text", text=str({
+                "version_id": version_id, "entries_snapshot": len(entry_ids),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }))]
 
-    elif name == "knowledge_snapshot-rollback":
-        version_id = arguments["version_id"]
+        elif name == "knowledge_snapshot-rollback":
+            version_id = arguments["version_id"]
 
-        if not _has_pg(db):
-            return [TextContent(type="text", text=str({"error": "PgVector required for snapshots"}))]
+            if not db.has_pg:
+                return [TextContent(type="text", text=str({"error": "PgVector required for snapshots"}))]
 
-        cur = db._pg_conn.cursor()
-        cur.execute(
-            "SELECT entry_ids, created_at FROM memory_snapshots WHERE version_id = %s",
-            (version_id,),
-        )
-        row = cur.fetchone()
-        if not row:
-            return [TextContent(type="text", text=str({"error": f"Snapshot '{version_id}' not found"}))]
+            cur = db._pg_conn.cursor()
+            cur.execute(
+                "SELECT entry_ids, created_at FROM memory_snapshots WHERE version_id = %s",
+                (version_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                cur.close()
+                return [TextContent(type="text", text=str({"error": f"Snapshot '{version_id}' not found"}))]
 
-        snapshot_ids, snapshot_at = row
-        cur.execute(
-            "UPDATE entries SET superseded_by = id, updated_at = NOW() "
-            "WHERE id != ALL(%s) AND created_at > %s AND superseded_by IS NULL",
-            (snapshot_ids, snapshot_at),
-        )
-        affected = cur.rowcount
-        db._pg_conn.commit()
+            snapshot_ids, snapshot_at = row
+            cur.execute(
+                "UPDATE entries SET superseded_by = id, updated_at = NOW() "
+                "WHERE id != ALL(%s) AND created_at > %s AND superseded_by IS NULL",
+                (snapshot_ids, snapshot_at),
+            )
+            affected = cur.rowcount
+            db._pg_conn.commit()
+            cur.close()
 
-        return [TextContent(type="text", text=str({
-            "version_id": version_id, "entries_rolled_forward": affected,
-            "snapshot_entries": len(snapshot_ids),
-            "note": "Entries superseded, not deleted. Recall ranking deprioritizes them.",
-        }))]
+            return [TextContent(type="text", text=str({
+                "version_id": version_id, "entries_rolled_forward": affected,
+                "snapshot_entries": len(snapshot_ids),
+                "note": "Entries superseded, not deleted. Recall ranking deprioritizes them.",
+            }))]
 
-    raise ValueError(f"Unknown tool: {name}")
+        elif name == "knowledge_ontology-status":
+            if not db.has_pg:
+                return [TextContent(type="text", text=str({"error": "PgVector required for ontology status"}))]
+            cur = db._pg_conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM entities"); ec = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM relations"); rc = cur.fetchone()[0]
+            cur.execute("""
+                SELECT entity_type, COUNT(*) FROM entities
+                GROUP BY entity_type ORDER BY COUNT(*) DESC
+            """)
+            type_dist = dict(cur.fetchall())
+            cur.execute("""
+                SELECT COUNT(*) FROM entities e
+                WHERE NOT EXISTS (SELECT 1 FROM relations r WHERE r.source_id = e.id OR r.target_id = e.id)
+            """)
+            orphans = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM entries")
+            entries_count = cur.fetchone()[0]
+            cur.close()
+            return [TextContent(type="text", text=str({
+                "entities": ec, "relations": rc, "orphans": orphans,
+                "memory_entries": entries_count,
+                "type_distribution": type_dist,
+                "note": f"{ec} entities, {rc} relations, {orphans} orphans across {len(type_dist)} types",
+            }))]
+
+        else:
+            return [TextContent(type="text", text=str({"error": f"Unknown tool: {name}"}))]
+
+    except Exception as e:
+        logger.exception("Unhandled error in call_tool: %s", e)
+        return [TextContent(type="text", text=str({"error": str(e)}))]
 
 
 async def main():

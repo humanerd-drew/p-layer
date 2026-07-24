@@ -34,8 +34,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_DIR = os.environ.get("KNOWLEDGE_DB_DIR", str(Path.cwd() / ".knowledge"))
-PG_DSN = os.environ.get("KNOWLEDGE_PG_DSN", "")
+def _default_db_dir():
+    return os.environ.get("KNOWLEDGE_DB_DIR", str(Path.cwd() / ".knowledge"))
+
+def _default_pg_dsn():
+    return os.environ.get("KNOWLEDGE_PG_DSN", "")
 
 LAYER_AUTHORITY = {
     "P0": 100, "P1": 80, "P2": 60, "P3": 50, "P4": 40, "P5": 30, "P6": 20,
@@ -70,12 +73,14 @@ class KnowledgeDB:
     def __init__(self, mode: str = "auto", dsn: str = None,
                  db_dir: str = None):
         self.mode = mode
-        self.dsn = dsn or PG_DSN
-        self.db_dir = Path(db_dir or DEFAULT_DB_DIR)
+        self.dsn = dsn or _default_pg_dsn()
+        self.db_dir = Path(db_dir or _default_db_dir())
         self._pg_conn = None
         self._sqlite_conn = None
-        if HAS_PG:
+        if HAS_PG and self.mode != "sqlite":
             self._connect_pg()
+        if self.mode != "pg" and self._sqlite_conn is None:
+            self._connect_sqlite()
 
     def _connect_pg(self):
         if self.mode == "sqlite" or not self.dsn:
@@ -102,6 +107,10 @@ class KnowledgeDB:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     fact TEXT NOT NULL,
                     type TEXT NOT NULL DEFAULT 'fact',
+                    who TEXT DEFAULT '',
+                    layer TEXT DEFAULT '',
+                    source TEXT DEFAULT '',
+                    source_path TEXT DEFAULT '',
                     created_at TEXT NOT NULL DEFAULT (datetime('now'))
                 );
                 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
@@ -113,6 +122,28 @@ class KnowledgeDB:
                 CREATE TRIGGER IF NOT EXISTS memory_ai AFTER INSERT ON memory BEGIN
                     INSERT INTO memory_fts(rowid, fact, type) VALUES (new.id, new.fact, new.type);
                 END;
+                CREATE TRIGGER IF NOT EXISTS memory_ad AFTER DELETE ON memory BEGIN
+                    INSERT INTO memory_fts(memory_fts, rowid, fact, type) VALUES('delete', old.id, old.fact, old.type);
+                END;
+                CREATE TRIGGER IF NOT EXISTS memory_au AFTER UPDATE ON memory BEGIN
+                    INSERT INTO memory_fts(memory_fts, rowid, fact, type) VALUES('delete', old.id, old.fact, old.type);
+                    INSERT INTO memory_fts(rowid, fact, type) VALUES (new.id, new.fact, new.type);
+                END;
+                CREATE TABLE IF NOT EXISTS entities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    label TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    properties TEXT DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS relations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+                    target_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+                    rel_type TEXT NOT NULL,
+                    properties TEXT DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
             """)
         return self._sqlite_conn
 
@@ -126,10 +157,14 @@ class KnowledgeDB:
             self._connect_sqlite()
 
     @property
+    def has_pg(self) -> bool:
+        return self._pg_conn is not None
+
+    @property
     def available(self) -> bool:
         if self.mode == "sqlite":
             return True
-        if self._pg_conn is None:
+        if not self.has_pg:
             return False
         try:
             cur = self._pg_conn.cursor()
@@ -177,35 +212,41 @@ class KnowledgeDB:
 
     def _pg_insert(self, data: dict, embedding: list = None) -> dict:
         cur = self._pg_conn.cursor()
-        cols = list(data.keys())
-        placeholders = ["%s"] * len(cols)
-        values = [data[k] for k in cols]
+        try:
+            cols = list(data.keys())
+            placeholders = ["%s"] * len(cols)
+            values = [data[k] for k in cols]
 
-        if embedding is not None:
-            cols.append("embedding")
-            placeholders.append("%s")
-            values.append(np.array(embedding, dtype=np.float32))
+            if embedding is not None:
+                cols.append("embedding")
+                placeholders.append("%s")
+                values.append(np.array(embedding, dtype=np.float32))
 
-        cur.execute(
-            f"INSERT INTO entries ({', '.join(cols)}) "
-            f"VALUES ({', '.join(placeholders)}) "
-            f"RETURNING id, who, type, layer, authority, created_at",
-            values
-        )
-        row = cur.fetchone()
-        if not row:
-            raise DatabaseError("INSERT RETURNING returned no rows")
-        return {
-            "id": row[0], "who": row[1], "type": row[2],
-            "layer": row[3], "authority": row[4],
-            "created_at": row[5].isoformat() if row[5] else None,
-        }
+            cur.execute(
+                f"INSERT INTO entries ({', '.join(cols)}) "
+                f"VALUES ({', '.join(placeholders)}) "
+                f"RETURNING id, who, type, layer, authority, created_at",
+                values
+            )
+            row = cur.fetchone()
+            if not row:
+                raise DatabaseError("INSERT RETURNING returned no rows")
+            return {
+                "id": row[0], "who": row[1], "type": row[2],
+                "layer": row[3], "authority": row[4],
+                "created_at": row[5].isoformat() if row[5] else None,
+            }
+        finally:
+            cur.close()
 
     def _sqlite_insert(self, data: dict) -> dict:
         conn = self._connect_sqlite()
         conn.execute(
-            "INSERT INTO memory (fact, type) VALUES (?, ?)",
-            (data["content"], data["type"])
+            "INSERT INTO memory (fact, type, who, layer, source, source_path) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (data["content"], data["type"], data.get("who", ""),
+             data.get("layer", ""), data.get("source", ""),
+             data.get("source_path", ""))
         )
         conn.commit()
         return {"id": conn.execute("SELECT last_insert_rowid()").fetchone()[0], **data}
@@ -224,45 +265,73 @@ class KnowledgeDB:
     def _pg_search(self, query: str, layers: list = None,
                    limit: int = 20, who: str = None) -> list:
         cur = self._pg_conn.cursor()
-        conditions = []
-        params = []
+        try:
+            where_parts = []
+            params = []
 
-        if layers:
-            placeholders = ", ".join(f"'{l}'" for l in layers)
-            conditions.append(f"layer IN ({placeholders})")
-        if who:
-            conditions.append("who = %s")
-            params.append(who)
-        if query:
-            conditions.append("tsv @@ plainto_tsquery('english', %s)")
-            params.append(query)
+            if layers:
+                placeholders = ", ".join("%s" for _ in layers)
+                where_parts.append(f"layer IN ({placeholders})")
+                params.extend(layers)
+            if who:
+                where_parts.append("who = %s")
+                params.append(who)
 
-        where = " AND ".join(conditions) if conditions else "TRUE"
-        sql = f"""
-            SELECT id, who, type, layer, authority,
-                   substring(content, 1, 200) as content_preview,
-                   created_at,
-                   ts_rank(tsv, plainto_tsquery('english', %s)) as rank
-            FROM entries
-            WHERE {where}
-            ORDER BY authority DESC, rank DESC, created_at DESC
-            LIMIT {limit}
-        """
-        all_params = [query] + params if query else params
-        cur.execute(sql, all_params if params else [query] if query else [])
+            where = " AND ".join(where_parts) if where_parts else "TRUE"
 
-        results = []
-        for r in cur.fetchall():
-            results.append({
-                "id": r[0], "who": r[1], "type": r[2],
-                "layer": r[3], "authority": r[4],
-                "content": r[5], "created_at": r[6].isoformat() if r[6] else None,
-            })
-        return results
+            if query:
+                ts_query = query
+                where_parts.append("tsv @@ plainto_tsquery('english', %s)")
+                exec_params = [ts_query] + params + [ts_query, limit]
+                sql = f"""
+                    SELECT id, who, type, layer, authority,
+                           substring(content, 1, 200) as content_preview,
+                           created_at,
+                           ts_rank(tsv, plainto_tsquery('english', %s)) as rank
+                    FROM entries
+                    WHERE {' AND '.join(where_parts)}
+                    ORDER BY authority DESC, rank DESC, created_at DESC
+                    LIMIT %s
+                """
+            else:
+                exec_params = params + [limit]
+                sql = f"""
+                    SELECT id, who, type, layer, authority,
+                           substring(content, 1, 200) as content_preview,
+                           created_at,
+                           0.0 as rank
+                    FROM entries
+                    WHERE {where}
+                    ORDER BY authority DESC, created_at DESC
+                    LIMIT %s
+                """
+
+            cur.execute(sql, exec_params)
+            results = []
+            for r in cur.fetchall():
+                results.append({
+                    "id": r[0], "who": r[1], "type": r[2],
+                    "layer": r[3], "authority": r[4],
+                    "content": r[5], "created_at": r[6].isoformat() if r[6] else None,
+                })
+            return results
+        finally:
+            cur.close()
 
     def _sqlite_search(self, query: str, limit: int = 20) -> list:
         conn = self._connect_sqlite()
         try:
+            if not query.strip():
+                rows = conn.execute(
+                    "SELECT id, fact, type, who, layer, source, source_path FROM memory "
+                    "ORDER BY id DESC LIMIT ?",
+                    (limit,)
+                ).fetchall()
+                return [{
+                    "id": r[0], "content": r[1], "type": r[2],
+                    "who": r[3], "layer": r[4] or "P5",
+                    "source": r[5], "source_path": r[6],
+                } for r in rows]
             rows = conn.execute(
                 "SELECT rowid, fact, type FROM memory_fts "
                 "WHERE memory_fts MATCH ? LIMIT ?",
@@ -277,97 +346,175 @@ class KnowledgeDB:
         if self.mode == "sqlite" or self._pg_conn is None:
             return []
         cur = self._pg_conn.cursor()
-        vec = np.array(embedding, dtype=np.float32)
-        layer_filter = ""
-        if layers:
-            placeholders = ", ".join(f"'{l}'" for l in layers)
-            layer_filter = f"AND layer IN ({placeholders})"
+        try:
+            vec = np.array(embedding, dtype=np.float32)
+            where_parts = ["embedding IS NOT NULL"]
+            params = [vec]  # first %s for similarity expr
 
-        cur.execute(
-            f"""SELECT id, who, type, layer, authority,
-                       substring(content, 1, 200) as preview,
-                       created_at,
-                       1 - (embedding <=> %s) as similarity
-                FROM entries WHERE embedding IS NOT NULL {layer_filter}
-                ORDER BY embedding <=> %s LIMIT {limit}""",
-            (vec, vec)
-        )
-        results = []
-        for r in cur.fetchall():
-            results.append({
-                "id": r[0], "who": r[1], "type": r[2],
-                "layer": r[3], "authority": r[4],
-                "content": r[5], "created_at": r[6].isoformat() if r[6] else None,
-                "similarity": round(r[7], 4),
-            })
-        return results
+            if layers:
+                placeholders = ", ".join("%s" for _ in layers)
+                where_parts.append(f"layer IN ({placeholders})")
+                params.extend(layers)
+
+            params += [vec, limit]  # ORDER BY %s + LIMIT %s
+
+            cur.execute(
+                f"""SELECT id, who, type, layer, authority,
+                           substring(content, 1, 200) as preview,
+                           created_at,
+                           1 - (embedding <=> %s) as similarity
+                    FROM entries WHERE {' AND '.join(where_parts)}
+                    ORDER BY embedding <=> %s LIMIT %s""",
+                params
+            )
+            results = []
+            for r in cur.fetchall():
+                results.append({
+                    "id": r[0], "who": r[1], "type": r[2],
+                    "layer": r[3], "authority": r[4],
+                    "content": r[5], "created_at": r[6].isoformat() if r[6] else None,
+                    "similarity": round(r[7], 4),
+                })
+            return results
+        finally:
+            cur.close()
 
     def hybrid_search(self, query: str, embedding: list,
                       layers: list = None, limit: int = 10) -> list:
         if self.mode == "sqlite" or self._pg_conn is None:
             return self._sqlite_search(query, limit)
         cur = self._pg_conn.cursor()
-        vec = np.array(embedding, dtype=np.float32)
-        layer_filter = ""
-        if layers:
-            placeholders = ", ".join(f"'{l}'" for l in layers)
-            layer_filter = f"AND layer IN ({placeholders})"
+        try:
+            vec = np.array(embedding, dtype=np.float32)
+            where_parts = ["(tsv @@ plainto_tsquery('english', %s) OR embedding IS NOT NULL)"]
+            params = [query, vec, query, vec, query]  # fts_score, vec_score, combined(fts), combined(vec), where_clause
 
-        cur.execute(
-            f"""SELECT id, who, type, layer, authority,
-                       substring(content, 1, 200) as preview, created_at,
-                       ts_rank(tsv, plainto_tsquery('english', %s)) as fts_score,
-                       1 - (embedding <=> %s) as vec_score,
-                       (ts_rank(tsv, plainto_tsquery('english', %s)) * 0.3 +
-                        (1 - (embedding <=> %s)) * 0.7) as combined
-                FROM entries
-                WHERE (tsv @@ plainto_tsquery('english', %s) OR embedding IS NOT NULL)
-                  {layer_filter}
-                ORDER BY combined DESC LIMIT {limit}""",
-            (query, vec, query, vec, query)
-        )
-        results = []
-        for r in cur.fetchall():
-            results.append({
-                "id": r[0], "who": r[1], "type": r[2],
-                "layer": r[3], "authority": r[4],
-                "content": r[5], "created_at": r[6].isoformat() if r[6] else None,
-                "combined_score": round(r[9], 4),
-            })
-        return results
+            if layers:
+                placeholders = ", ".join("%s" for _ in layers)
+                where_parts.append(f"layer IN ({placeholders})")
+                params.extend(layers)
+
+            params.append(limit)
+
+            cur.execute(
+                f"""SELECT id, who, type, layer, authority,
+                           substring(content, 1, 200) as preview, created_at,
+                           ts_rank(tsv, plainto_tsquery('english', %s)) as fts_score,
+                           1 - (embedding <=> %s) as vec_score,
+                           (ts_rank(tsv, plainto_tsquery('english', %s)) * 0.3 +
+                            (1 - (embedding <=> %s)) * 0.7) as combined
+                    FROM entries
+                    WHERE {' AND '.join(where_parts)}
+                    ORDER BY combined DESC LIMIT %s""",
+                params
+            )
+            results = []
+            for r in cur.fetchall():
+                results.append({
+                    "id": r[0], "who": r[1], "type": r[2],
+                    "layer": r[3], "authority": r[4],
+                    "content": r[5], "created_at": r[6].isoformat() if r[6] else None,
+                    "combined_score": round(r[9], 4),
+                })
+            return results
+        finally:
+            cur.close()
 
     def get_layer(self, layer: str, limit: int = 50) -> list:
         return self.search("", layers=[layer], limit=limit)
 
     def get_layer_count(self, layer: str = None) -> dict:
-        if self.mode == "sqlite" or self._pg_conn is None:
+        if self.mode == "sqlite" or not self.has_pg:
             return {"sqlite": True}
         cur = self._pg_conn.cursor()
-        if layer:
-            cur.execute("SELECT layer, COUNT(*) FROM entries WHERE layer = %s GROUP BY layer", (layer,))
-        else:
-            cur.execute("SELECT layer, COUNT(*) FROM entries GROUP BY layer ORDER BY layer")
-        return {r[0]: r[1] for r in cur.fetchall()}
+        try:
+            if layer:
+                cur.execute("SELECT layer, COUNT(*) FROM entries WHERE layer = %s GROUP BY layer", (layer,))
+            else:
+                cur.execute("SELECT layer, COUNT(*) FROM entries GROUP BY layer ORDER BY layer")
+            return {r[0]: r[1] for r in cur.fetchall()}
+        finally:
+            cur.close()
 
     def graph_query(self, entity_label: str, depth: int = 2) -> dict:
-        if self.mode == "sqlite" or self._pg_conn is None:
-            return {"nodes": [], "edges": []}
+        if self.has_pg:
+            return self._pg_graph_query(entity_label, depth)
+        return self._sqlite_graph_query(entity_label, depth)
+
+    def _pg_graph_query(self, entity_label: str, depth: int = 2) -> dict:
         cur = self._pg_conn.cursor()
-        cur.execute("SELECT id, label, entity_type FROM entities WHERE label = %s", (entity_label,))
-        start = cur.fetchone()
+        try:
+            cur.execute("SELECT id, label, entity_type FROM entities WHERE label = %s", (entity_label,))
+            start = cur.fetchone()
+            if not start:
+                return {"nodes": [], "edges": []}
+            return self._traverse_graph(start, cur, depth)
+        finally:
+            cur.close()
+
+    def _sqlite_graph_query(self, entity_label: str, depth: int = 2) -> dict:
+        conn = self._connect_sqlite()
+        start = conn.execute(
+            "SELECT id, label, entity_type FROM entities WHERE label = ?",
+            (entity_label,)
+        ).fetchone()
         if not start:
             return {"nodes": [], "edges": []}
+        return self._sqlite_traverse_graph(conn, start, depth)
 
+    def _sqlite_traverse_graph(self, conn, start, depth: int) -> dict:
         nodes = {start[0]: {"id": start[0], "label": start[1], "type": start[2]}}
         edges = []
+        edge_ids = set()
         visited = {start[0]}
         current = {start[0]}
 
         for _ in range(depth):
             if not current:
                 break
-            placeholders = ", ".join(str(i) for i in current)
-            cur.execute(
+            ids = list(current)
+            placeholders = ", ".join("?" for _ in ids)
+            params = ids + ids
+            rows = conn.execute(
+                """SELECT r.id, r.source_id, r.target_id, r.rel_type,
+                          s.label, s.entity_type,
+                          t.label, t.entity_type
+                   FROM relations r
+                   JOIN entities s ON r.source_id = s.id
+                   JOIN entities t ON r.target_id = t.id
+                   WHERE r.source_id IN (?) OR r.target_id IN (?)""",
+                params
+            ).fetchall()
+            new_ids = set()
+            for r in rows:
+                if r[0] not in edge_ids:
+                    edges.append({"id": r[0], "source": r[1], "target": r[2], "type": r[3]})
+                    edge_ids.add(r[0])
+                if r[1] not in visited:
+                    nodes[r[1]] = {"id": r[1], "label": r[4], "type": r[5]}
+                    new_ids.add(r[1])
+                    visited.add(r[1])
+                if r[2] not in visited:
+                    nodes[r[2]] = {"id": r[2], "label": r[6], "type": r[7]}
+                    new_ids.add(r[2])
+                    visited.add(r[2])
+            current = new_ids
+        return {"nodes": list(nodes.values()), "edges": edges}
+
+    def _traverse_graph(self, start, cursor, depth: int) -> dict:
+        nodes = {start[0]: {"id": start[0], "label": start[1], "type": start[2]}}
+        edges = []
+        edge_ids = set()
+        visited = {start[0]}
+        current = {start[0]}
+
+        for _ in range(depth):
+            if not current:
+                break
+            ids = list(current)
+            placeholders = ", ".join(["?"] * len(ids) if not self.has_pg else ["%s"] * len(ids))
+            params = ids + ids
+            cursor.execute(
                 f"""SELECT r.id, r.source_id, r.target_id, r.rel_type,
                            s.label as s_label, s.entity_type as s_type,
                            t.label as t_label, t.entity_type as t_type
@@ -375,11 +522,14 @@ class KnowledgeDB:
                     JOIN entities s ON r.source_id = s.id
                     JOIN entities t ON r.target_id = t.id
                     WHERE r.source_id IN ({placeholders})
-                       OR r.target_id IN ({placeholders})"""
+                       OR r.target_id IN ({placeholders})""",
+                params
             )
             new_ids = set()
-            for r in cur.fetchall():
-                edges.append({"id": r[0], "source": r[1], "target": r[2], "type": r[3]})
+            for r in cursor.fetchall():
+                if r[0] not in edge_ids:
+                    edges.append({"id": r[0], "source": r[1], "target": r[2], "type": r[3]})
+                    edge_ids.add(r[0])
                 if r[1] not in visited:
                     nodes[r[1]] = {"id": r[1], "label": r[4], "type": r[5]}
                     new_ids.add(r[1])

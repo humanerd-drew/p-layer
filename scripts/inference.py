@@ -119,19 +119,25 @@ def all_():
 
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 2:
-        print(json.dumps(all_(), indent=2))
-    elif sys.argv[1] == "transitive":
-        name = sys.argv[3] if "--entity" in sys.argv else None
-        rtype = sys.argv[3] if "--type" in sys.argv else None
-        print(json.dumps(transitive_closure(name, rtype or "depends_on"), indent=2))
-    elif sys.argv[1] == "backtrace":
-        name = sys.argv[3] if "--entity" in sys.argv else None
-        print(json.dumps(backtrace(name), indent=2))
-    elif sys.argv[1] == "contradictions":
+    import argparse
+    parser = argparse.ArgumentParser(description="Entity graph inference engine")
+    parser.add_argument("command", nargs="?", default="all",
+                        choices=["transitive", "backtrace", "contradictions", "all"])
+    parser.add_argument("--entity", default=None, help="Entity label to trace")
+    parser.add_argument("--type", default=None, help="Relation type filter")
+    args, _ = parser.parse_known_args()
+
+    if args.command == "transitive":
+        if not args.entity:
+            print(json.dumps({"error": "--entity is required for transitive"}, indent=2))
+        else:
+            print(json.dumps(transitive_closure(args.entity, args.type or "depends_on"), indent=2))
+    elif args.command == "backtrace":
+        if not args.entity:
+            print(json.dumps({"error": "--entity is required for backtrace"}, indent=2))
+        else:
+            print(json.dumps(backtrace(args.entity), indent=2))
+    elif args.command == "contradictions":
         print(json.dumps(contradictions(), indent=2))
-    elif sys.argv[1] == "all":
-        print(json.dumps(all_(), indent=2))
     else:
         print(json.dumps(all_(), indent=2))

@@ -10,7 +10,7 @@ result = db.insert(
     layer="P5",
     type="fact",
     content="P-layer organizes agent memory into 7 governance layers.",
-    who="example:quickstart",
+    who="system:quickstart",
 )
 print(f"Inserted: id={result['id']}")
 

@@ -8,7 +8,7 @@ echo "=== 1. Install p-layer ==="
 pip install p-layers -q
 
 echo "=== 2. Seed the knowledge database ==="
-python3 -m p_layer --help > /dev/null 2>&1 || true  # warm up
+python3 -c "from p_layer.core.db import KnowledgeDB; print('import ok')" 2>/dev/null || true
 python3 scripts/seed_knowledge_db.py
 
 echo "=== 3. Initialize ontology ==="
