@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.embed import HashEmbedder
-from memcore.store import Store
+from p_layer.embed import HashEmbedder
+from p_layer.store import Store
 
 
 class StoreTests(unittest.TestCase):

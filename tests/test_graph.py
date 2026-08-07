@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.embed import NoopEmbedder
-from memcore.store import Store
+from p_layer.embed import NoopEmbedder
+from p_layer.store import Store
 
 
 def _graph_store(self):

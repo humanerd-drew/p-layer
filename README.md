@@ -1,8 +1,8 @@
-# memcore
+# p-layer
 
 **Governed memory for AI agents.** A stdlib-only Python memory layer — SQLite + FTS5 + pluggable embeddings — with P0-P6 layer governance enforced in code, not prose.
 
-[![CI](https://github.com/humanerd-drew/memcore/actions/workflows/ci.yml/badge.svg)](https://github.com/humanerd-drew/memcore/actions/workflows/ci.yml)
+[![CI](https://github.com/humanerd-drew/p-layers/actions/workflows/ci.yml/badge.svg)](https://github.com/humanerd-drew/p-layers/actions/workflows/ci.yml)
 ```
 7 layers. 1 memory. Every write audited.
 ```
@@ -13,7 +13,7 @@
 
 The P0-P6 "brain layer" memory idea (drewgent, p-layer) is sound, but the reference implementations carry the same core defects:
 
-| Defect | drewgent / p-layer | memcore |
+| Defect | drewgent / p-layer | p-layers |
 |---|---|---|
 | Schema management | `CREATE TABLE IF NOT EXISTS` everywhere, no versioning | Forward-only, checksummed migrations (`schema_migrations`) |
 | Search index | External-content FTS5 + triggers (fragile; p-layer's `forget` breaks it) | Standalone FTS5, no trigger coupling |
@@ -37,43 +37,43 @@ This repo is the production-grade rebuild: the governance ideas ported from p-la
 | **MCP server** | 12 tools (`remember`, `recall`, `forget`, `update`, `snapshot_*`, `memory_stats`, `memory_audit`, `assemble`, `graph_explore`, `graph_trace`, `graph_rca`) — zero-dependency stdio implementation, any client. |
 | **Import tool** | `import-drewgent` migrates an existing drewgent `knowledge.db` (schema re-validated, re-embedded, sessions carried into episodes). |
 | **Graph & inference** | `graph_explore` / `graph_trace` / `graph_rca` (caused/fixed_by chains) / `transitive_closure` — drewgent graph_query.py parity, cycle-safe traversal. |
-| **Vault ingest** | `import-rules` (rules.md → rules) and `import-incidents` (P6 incidents → episodes) — the vault stays files, memcore references it. |
-| **p-layers compat** | This package is published on PyPI as **`p-layers`** (GitHub repo: memcore). `p_layer/` keeps the 0.1.x `KnowledgeDB` API and `knowledge_*` MCP tools over this engine — existing p-layers integrations upgrade without code changes. |
+| **Vault ingest** | `import-rules` (rules.md → rules) and `import-incidents` (P6 incidents → episodes) — the vault stays files, p-layers references it. |
+| **p-layers compat** | This package is published on PyPI as **`p-layers`** (GitHub repo: p-layer). `p_layer/` keeps the 0.1.x `KnowledgeDB` API and `knowledge_*` MCP tools over this engine — existing p-layers integrations upgrade without code changes. |
 | **Re-embed job** | `reembed` backfills embeddings after a model switch; vectors are versioned (old versions stay queryable), recall only reads the current version. Idempotent. |
 | **Consolidation** | `consolidate` compresses unconsolidated episodes into `insight` digests — deterministic offline summarizer, pluggable LLM hook, idempotent, audited. |
 | **PostgreSQL backend** | `PgStore` — the same interface, governance, and parity-tested behavior on Postgres (pg_trgm ILIKE for CJK, pgvector semantic). Ops jobs stay SQLite-only, loudly. |
 
 ## Proof: governance improves retrieval
 
-Same data, two engines, one command (`memcore eval suite.json`):
+Same data, two engines, one command (`p-layer eval suite.json`):
 
 ```
 recall@k (same data, two engines):
   drewgent baseline : 0.667 (2/3)      ← naive FTS OR-join, insertion order
-  memcore           : 1.000 (3/3)      ← confidence/freshness-ranked
+  p-layer            : 1.000 (3/3)      ← confidence/freshness-ranked
   delta             : +0.333
 ACL compliance: 100.0% (30/30) enforcement cases correct
 ```
 
-The baseline can't move — it has no metadata. memcore turns governance metadata (confidence, layer, supersession) into retrieval quality, and the ACL suite proves the governance is real: every (layer, who) combination is allowed or denied exactly as specified.
+The baseline can't move — it has no metadata. p-layers turns governance metadata (confidence, layer, supersession) into retrieval quality, and the ACL suite proves the governance is real: every (layer, who) combination is allowed or denied exactly as specified.
 
 ## Quick start
 
 ```bash
 # no dependencies — stdlib only (Python >= 3.9)
-export MEMCORE_EMBED=hash   # offline fallback; ollama is the default
-export MEMCORE_DB=~/.memcore/memory.db
+export P_LAYER_EMBED=hash   # offline fallback; ollama is the default
+export P_LAYER_DB=~/.p_layer/memory.db
 
-python3 -m memcore init
-python3 -m memcore remember "switched to portone v2 for payments" --type decision --layer P5
-python3 -m memcore recall "portone"
-python3 -m memcore assemble --budget 12000     # rules first, then recent knowledge
+python3 -m p_layer init
+python3 -m p_layer remember "switched to portone v2 for payments" --type decision --layer P5
+python3 -m p_layer recall "portone"
+python3 -m p_layer assemble --budget 12000     # rules first, then recent knowledge
 ```
 
 Python API:
 
 ```python
-from memcore.store import Store, WriteDenied
+from p_layer.store import Store, WriteDenied
 
 db = Store()
 db.add_knowledge("client prefers weekly sync", type="preference", layer="P6", who="agent")
@@ -90,10 +90,10 @@ MCP (any client — opencode, Claude Desktop, Cursor):
 ```json
 {
   "mcp": {
-    "memcore": {
+    "p-layers": {
       "type": "local",
-      "command": ["python3", "-m", "memcore", "serve"],
-      "env": { "MEMCORE_DB": "~/.memcore/memory.db" }
+      "command": ["python3", "-m", "p-layers", "serve"],
+      "env": { "P_LAYER_DB": "~/.p_layer/memory.db" }
     }
   }
 }
@@ -142,34 +142,34 @@ python3 -m unittest discover -s tests -v   # 133 tests (22 PG tests skip without
 - `examples/quickstart.py` — API walkthrough
 - `examples/demo_import_eval.sh` — the full migration story: drewgent fixture (knowledge + sessions + ontology + vault files) → import → vault ingest → eval before/after governance → audit → graph → contradictions → wiki
 - `examples/suite.example.json` — eval suite format
-- `examples/opencode-memcore.jsonc` — ready-to-paste MCP config that replaces drewgent's remember/recall tooling
+- `examples/opencode-p-layer.jsonc` — ready-to-paste MCP config that replaces drewgent's remember/recall tooling
 
-## Replace drewgent's memory with memcore
+## Replace drewgent's memory with p-layers
 
-The vault (identity, persona, skills as files) stays as files — it is a different storage class and should not be a database. memcore replaces the *knowledge layer*:
+The vault (identity, persona, skills as files) stays as files — it is a different storage class and should not be a database. p-layers replaces the *knowledge layer*:
 
 ```bash
 # 1. migrate the data (knowledge + entities + relations + sessions)
-python3 -m memcore import-drewgent ~/.drewgent/.opencode/knowledge.db --embed ollama
+python3 -m p_layer import-drewgent ~/.drewgent/.opencode/knowledge.db --embed ollama
 
 # 2. ingest what the vault holds that belongs in the store (optional)
-python3 -m memcore import-rules ~/.drewgent/@identity/brain/rules.md
-python3 -m memcore import-incidents ~/.drewgent/P6-prefrontal/incidents
+python3 -m p_layer import-rules ~/.drewgent/@identity/brain/rules.md
+python3 -m p_layer import-incidents ~/.drewgent/P6-prefrontal/incidents
 
-# 3. point the agent at the MCP server (examples/opencode-memcore.jsonc),
-#    and update AGENTS.md so it uses the memcore tools
+# 3. point the agent at the MCP server (examples/opencode-p-layer.jsonc),
+#    and update AGENTS.md so it uses the p-layers tools
 ```
 
-Then `memcore eval suite.json` proves the swap: same data, recall@k 0.667 → 1.000 with governance metadata, ACL 30/30.
+Then `p-layer eval suite.json` proves the swap: same data, recall@k 0.667 → 1.000 with governance metadata, ACL 30/30.
 
 ## PostgreSQL backend (multi-agent / SMB phase)
 
 `PgStore` mirrors the SQLite `Store` interface — same methods, same governance, verified by a shared parity suite that runs every behavioral assertion against both backends.
 
 ```python
-from memcore.pgstore import PgStore
+from p_layer.pgstore import PgStore
 
-db = PgStore("dbname=memory host=localhost user=me")   # or MEMCORE_PG_DSN
+db = PgStore("dbname=memory host=localhost user=me")   # or P_LAYER_PG_DSN
 db.add_knowledge("switched to portone v2", type="decision", layer="P5")
 print(db.recall("portone"))
 ```

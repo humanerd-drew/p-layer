@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.embed import NoopEmbedder
-from memcore.store import Store, WriteDenied
+from p_layer.embed import NoopEmbedder
+from p_layer.store import Store, WriteDenied
 
 
 def _store(self):

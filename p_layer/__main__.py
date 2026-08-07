@@ -1,4 +1,4 @@
-"""Allow `python -m memcore ...` to behave like the `memcore` CLI."""
+"""Allow `python -m p_layer ...` to behave like the `p_layer` CLI."""
 import sys
 
 from .cli import main

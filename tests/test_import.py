@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.embed import NoopEmbedder
-from memcore.import_drewgent import import_drewgent
-from memcore.store import Store
+from p_layer.embed import NoopEmbedder
+from p_layer.import_drewgent import import_drewgent
+from p_layer.store import Store
 
 
 def _make_drewgent_db(path: Path):
@@ -63,7 +63,7 @@ class ImportTests(unittest.TestCase):
         src = Path(tmp.name) / "drewgent.db"
         _make_drewgent_db(src)
 
-        store = Store(str(Path(tmp.name) / "memcore.db"), embedder=NoopEmbedder())
+        store = Store(str(Path(tmp.name) / "p_layer.db"), embedder=NoopEmbedder())
         self.addCleanup(store.close)
         summary = import_drewgent(src, store, reembed=False)
 

@@ -1,4 +1,4 @@
-"""PgStore — PostgreSQL backend for memcore (multi-agent / SMB phase).
+"""PgStore — PostgreSQL backend for p_layer (multi-agent / SMB phase).
 
 Mirrors the SQLite `Store` interface: same schema semantics, same write/read
 API, same governance (layer ACLs, supersede, snapshots, audit), same hybrid
@@ -14,7 +14,7 @@ Backend differences, deliberate and documented:
   maintenance that runs on the SQLite store; on Pg they raise
   NotImplementedError loudly — never silently degraded.
 
-Requires: psycopg2 (+ pgvector for semantic). DSN: MEMCORE_PG_DSN or arg.
+Requires: psycopg2 (+ pgvector for semantic). DSN: P_LAYER_PG_DSN or arg.
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ from .store import (
     utcnow,
 )
 
-DEFAULT_DSN = os.environ.get("MEMCORE_PG_DSN", "")
+DEFAULT_DSN = os.environ.get("P_LAYER_PG_DSN", "")
 DEFAULT_VECTOR_DIM = 768
 
 _PG_KNOWLEDGE_COLS = ("id", "type", "content", "source", "session_id", "created_at",
@@ -192,7 +192,7 @@ class PgStore:
                  vector_dim: int = DEFAULT_VECTOR_DIM):
         self.dsn = dsn or DEFAULT_DSN
         if not self.dsn:
-            raise ValueError("PgStore needs a DSN (arg or MEMCORE_PG_DSN)")
+            raise ValueError("PgStore needs a DSN (arg or P_LAYER_PG_DSN)")
         if not HAS_PSYCOPG2:
             raise ImportError("PgStore requires psycopg2: pip install psycopg2-binary")
         self.embedder = embedder

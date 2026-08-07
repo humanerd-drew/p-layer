@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.migrations import MIGRATIONS, _checksum, applied_versions, migrate
+from p_layer.migrations import MIGRATIONS, _checksum, applied_versions, migrate
 
 
 class MigrationTests(unittest.TestCase):
@@ -44,7 +44,7 @@ class MigrationTests(unittest.TestCase):
             migrate(db)
 
     def test_forward_only_duplicate_version_rejected(self):
-        from memcore import migrations as m
+        from p_layer import migrations as m
 
         with self.assertRaises(RuntimeError):
             m._register(1, "duplicate", "SELECT 1")

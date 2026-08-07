@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.embed import HashEmbedder
-from memcore.mcp import handle_message
-from memcore.store import Store
+from p_layer.embed import HashEmbedder
+from p_layer.mcp import handle_message
+from p_layer.store import Store
 
 
 class McpTests(unittest.TestCase):
@@ -69,12 +69,12 @@ class McpTests(unittest.TestCase):
             '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"remember","arguments":{"fact":"hello world"}}}\n'
         )
         stdout = io.StringIO()
-        from memcore.mcp import serve
+        from p_layer.mcp import serve
 
         serve(s, stdin=stdin, stdout=stdout)
         lines = [json.loads(l) for l in stdout.getvalue().strip().splitlines()]
         self.assertEqual(len(lines), 2)
-        self.assertEqual(lines[0]["result"]["serverInfo"]["name"], "memcore")
+        self.assertEqual(lines[0]["result"]["serverInfo"]["name"], "p-layers")
         self.assertIn("saved", lines[1]["result"]["content"][0]["text"])
 
 

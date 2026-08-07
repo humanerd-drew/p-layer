@@ -1,0 +1,19 @@
+// opencode-p-layer.jsonc
+// Paste this `mcp` block into drewgent's opencode.jsonc (or your own) to
+// replace the remember/recall tooling with the p-layer MCP server.
+// Then update AGENTS.md / .opencode/instructions so the agent uses the
+// p-layer tools (remember, recall, forget, update, snapshot_*, memory_stats,
+// memory_audit, graph_*, assemble) instead of the template's.
+{
+  "mcp": {
+    "p_layer": {
+      "type": "local",
+      "command": ["python3", "-m", "p_layer", "serve"],
+      "env": {
+        "P_LAYER_DB": "~/.p_layer/memory.db",
+        "P_LAYER_EMBED": "ollama"
+      },
+      "enabled": true
+    }
+  }
+}

@@ -1,4 +1,4 @@
-"""memcore store — SQLite-backed agent memory.
+"""p_layer store — SQLite-backed agent memory.
 
 Single implementation, single schema (unlike drewgent's dual TS/Python paths
 and p-layer's Pg/SQLite parity holes). WAL + foreign keys on. FTS5 is a
@@ -25,7 +25,7 @@ from pathlib import Path
 from .embed import Embedder, EmbeddingError, load_embedder
 from .migrations import migrate
 
-DEFAULT_DB = os.environ.get("MEMCORE_DB") or str(Path.home() / ".memcore" / "memory.db")
+DEFAULT_DB = os.environ.get("P_LAYER_DB") or str(Path.home() / ".p_layer" / "memory.db")
 
 KNOWLEDGE_TYPES = ("fact", "decision", "preference", "pattern", "insight")
 

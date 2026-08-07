@@ -1,12 +1,11 @@
-"""p-layers 1.0 compat tests: KnowledgeDB API and knowledge_* MCP tools over memcore."""
+"""p-layers 1.0 compat tests: KnowledgeDB API and knowledge_* MCP tools over p_layer."""
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.mcp import handle_message as memcore_handle  # noqa: F401 (unused; for shape comparison)
-from p_layer import KnowledgeDB, WriteDenied
-from p_layer.mcp.server import handle_message
+from p_layer.compat import KnowledgeDB, WriteDenied
+from p_layer.compat.mcp import handle_message
 
 
 def _db(self):

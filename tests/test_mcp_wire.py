@@ -1,4 +1,4 @@
-"""Wire-level real-client test: the memcore MCP server driven through real
+"""Wire-level real-client test: the p_layer MCP server driven through real
 OS stdio pipes with the exact protocol message sequence a client performs
 (initialize -> notifications/initialized -> tools/list -> tools/call).
 
@@ -16,9 +16,9 @@ from pathlib import Path
 
 
 def _spawn_server(store_path: str):
-    env = dict(os.environ, MEMCORE_DB=store_path, MEMCORE_EMBED="hash")
+    env = dict(os.environ, P_LAYER_DB=store_path, P_LAYER_EMBED="hash")
     return subprocess.Popen(
-        [sys.executable, "-m", "memcore", "serve"],
+        [sys.executable, "-m", "p_layer", "serve"],
         env=env,
         cwd=Path(__file__).resolve().parent.parent,
         stdin=subprocess.PIPE,
@@ -71,7 +71,7 @@ class WireMcpTests(unittest.TestCase):
         # initialize
         resp = client.send("initialize", {"protocolVersion": "2024-11-05", "capabilities": {},
                                           "clientInfo": {"name": "wire", "version": "1"}})
-        self.assertEqual(resp["result"]["serverInfo"]["name"], "memcore")
+        self.assertEqual(resp["result"]["serverInfo"]["name"], "p-layers")
         client.notify("notifications/initialized")
 
         # tools/list

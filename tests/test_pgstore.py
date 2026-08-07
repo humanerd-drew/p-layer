@@ -1,17 +1,17 @@
 """PostgreSQL backend tests. Skipped when no PG is reachable.
 
-Set MEMCORE_TEST_PG_DSN to run (CI provides a postgres service container).
+Set P_LAYER_TEST_PG_DSN to run (CI provides a postgres service container).
 """
 import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.embed import HashEmbedder, NoopEmbedder
-from memcore.pgstore import PgStore
+from p_layer.embed import HashEmbedder, NoopEmbedder
+from p_layer.pgstore import PgStore
 
 TEST_DSN = os.environ.get(
-    "MEMCORE_TEST_PG_DSN", "dbname=memcore_test host=/tmp port=55432 user=postgres"
+    "P_LAYER_TEST_PG_DSN", "dbname=p_layer_test host=/tmp port=55432 user=postgres"
 )
 
 
@@ -66,7 +66,7 @@ class PgStoreTests(unittest.TestCase):
 
     def test_governance_enforced_and_audited(self):
         s = _pg_store(self)
-        from memcore.store import WriteDenied
+        from p_layer.store import WriteDenied
 
         with self.assertRaises(WriteDenied):
             s.add_knowledge("secret", layer="P0", who="agent")
@@ -113,7 +113,7 @@ class PgStoreTests(unittest.TestCase):
         self.assertIn("semantic_available", s.stats())
 
     def test_missing_dsn_raises(self):
-        import memcore.pgstore as pg
+        import p_layer.pgstore as pg
 
         old = pg.DEFAULT_DSN
         pg.DEFAULT_DSN = ""
@@ -127,7 +127,7 @@ class PgStoreTests(unittest.TestCase):
 class PgCliCompatTests(unittest.TestCase):
     def test_pg_layer_shim_points_nowhere(self):
         # The p-layers 1.0 compat layer is SQLite-only by design; PgStore is
-        # the memcore-native multi-user backend.
+        # the p_layer-native multi-user backend.
         self.assertEqual(PgStore.backend, "postgresql")
 
 

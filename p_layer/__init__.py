@@ -1,4 +1,4 @@
-"""memcore — production-grade agent memory layer.
+"""p_layer — production-grade agent memory layer.
 
 Stdlib-only. SQLite + FTS5 + pluggable embeddings. Single-writer, single-user
 first, designed so the store can be swapped for Postgres later without touching
@@ -13,7 +13,7 @@ Layers (v2, ported from p-layer's governance design):
   audit_log      — every write and every denied write (governance evidence)
 Layer ACLs (P0 system-only ... P6 agent+manual) are enforced in code, not prose.
 The eval harness proves the thesis: recall@k vs the drewgent baseline, plus
-ACL compliance, in one command (`memcore eval suite.json`).
+ACL compliance, in one command (`p_layer eval suite.json`).
 """
 
 __version__ = "0.6.0"

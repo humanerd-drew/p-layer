@@ -26,7 +26,7 @@ jobs:
         image: postgres:17
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: memcore_test
+          POSTGRES_DB: p_layer_test
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 10s
@@ -41,4 +41,4 @@ jobs:
       - name: Run full suite (SQLite + PG backend + MCP SDK client)
         run: python -m unittest discover -s tests -v
         env:
-          MEMCORE_TEST_PG_DSN: "dbname=memcore_test host=localhost port=5432 user=postgres password=postgres"
+          P_LAYER_TEST_PG_DSN: "dbname=p_layer_test host=localhost port=5432 user=postgres password=postgres"

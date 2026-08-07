@@ -1,4 +1,4 @@
-# memcore
+# p-layer
 
 **에이전트를 위한 거버넌스 메모리.** 의존성 0(Python 표준 라이브러리만)으로 동작하는 메모리 레이어 — SQLite + FTS5 + 플러그형 임베딩, 그리고 P0-P6 레이어 거버넌스를 **프롬프트가 아니라 코드로 강제**.
 
@@ -12,7 +12,7 @@
 
 P0-P6 "뇌 레이어" 메모리 개념(drewgent, p-layer)은 훌륭하지만, 레퍼런스 구현들은 같은 핵심 결함을 공유한다:
 
-| 결함 | drewgent / p-layer | memcore |
+| 결함 | drewgent / p-layer | p-layers |
 |---|---|---|
 | 스키마 관리 | `CREATE TABLE IF NOT EXISTS` 남발, 버전 없음 | forward-only + 체크섬 마이그레이션(`schema_migrations`) |
 | 검색 인덱스 | external-content FTS5 + 트리거(취약, p-layer `forget`은 이를 깨뜨림) | standalone FTS5, 트리거 결합 없음 |
@@ -36,43 +36,43 @@ P0-P6 "뇌 레이어" 메모리 개념(drewgent, p-layer)은 훌륭하지만, �
 | **MCP 서버** | 12개 툴, 의존성 0 stdio 구현 — opencode/Claude/Cursor 어디든 |
 | **이식 도구** | `import-drewgent` — 기존 drewgent `knowledge.db`를 스키마 재검증·재임베딩하며 이식 (세션은 episodes로 이관) |
 | **그래프 & 추론** | `graph_explore` / `graph_trace` / `graph_rca`(caused/fixed_by 체인) / `transitive_closure` — drewgent graph_query.py 패리티, 사이클 안전 |
-| **볼트 인제스트** | `import-rules`(rules.md → rules), `import-incidents`(P6 사건 → episodes) — 볼트는 파일로 유지, memcore가 참조 |
-| **p-layers 호환** | 이 패키지는 PyPI에 **`p-layers`**로 발행된다 (GitHub 레포: memcore). `p_layer/`가 0.1.x `KnowledgeDB` API와 `knowledge_*` MCP 툴을 이 엔진 위에 노출 — 기존 p-layers 설치가 코드 수정 없이 업그레이드 |
+| **볼트 인제스트** | `import-rules`(rules.md → rules), `import-incidents`(P6 사건 → episodes) — 볼트는 파일로 유지, p-layers가 참조 |
+| **p-layers 호환** | 이 패키지는 PyPI에 **`p-layers`**로 발행된다 (GitHub 레포: p-layers). `p_layer/`가 0.1.x `KnowledgeDB` API와 `knowledge_*` MCP 툴을 이 엔진 위에 노출 — 기존 p-layers 설치가 코드 수정 없이 업그레이드 |
 | **재임베딩 잡** | `reembed` — 모델 전환 후 임베딩 백필. 벡터는 버전관리(이전 버전 유지), recall은 현재 버전만 조회. 멱등 |
 | **Consolidation** | `consolidate` — 미압축 에피소드를 `insight` 다이제스트로 압축(episodic → semantic). 오프라인 결정적 요약 + LLM 훅, 멱등, 감사 기록 |
 | **PostgreSQL 백엔드** | `PgStore` — SQLite `Store`와 동일 인터페이스·거버넌스, 패리티 테스트로 검증 (pg_trgm ILIKE로 CJK, pgvector 시맨틱). 운영 잡은 SQLite 전용, 명시적으로만 |
 
 ## 증명: 거버넌스가 검색 품질을 높인다
 
-같은 데이터, 두 엔진, 한 명령어(`memcore eval suite.json`):
+같은 데이터, 두 엔진, 한 명령어(`p-layer eval suite.json`):
 
 ```
 recall@k (same data, two engines):
   drewgent baseline : 0.667 (2/3)      ← naive FTS OR-join, 삽입 순서
-  memcore           : 1.000 (3/3)      ← confidence/freshness 랭킹
+  p-layer            : 1.000 (3/3)      ← confidence/freshness 랭킹
   delta             : +0.333
 ACL compliance: 100.0% (30/30) enforcement cases correct
 ```
 
-베이스라인은 메타데이터가 없어 움직일 수 없다. memcore는 거버넌스 메타데이터(confidence, 레이어, supersession)를 검색 품질로 전환하고, ACL 30케이스 전부가 정확히 허가/거부된다.
+베이스라인은 메타데이터가 없어 움직일 수 없다. p-layers는 거버넌스 메타데이터(confidence, 레이어, supersession)를 검색 품질로 전환하고, ACL 30케이스 전부가 정확히 허가/거부된다.
 
 ## 빠른 시작
 
 ```bash
 # 의존성 없음 (Python >= 3.9)
-export MEMCORE_EMBED=hash   # 오프라인 폴백; 기본은 ollama
-export MEMCORE_DB=~/.memcore/memory.db
+export P_LAYER_EMBED=hash   # 오프라인 폴백; 기본은 ollama
+export P_LAYER_DB=~/.p_layer/memory.db
 
-python3 -m memcore init
-python3 -m memcore remember "switched to portone v2 for payments" --type decision --layer P5
-python3 -m memcore recall "portone"
-python3 -m memcore assemble --budget 12000     # 규칙 먼저, 최근 지식 다음
+python3 -m p_layer init
+python3 -m p_layer remember "switched to portone v2 for payments" --type decision --layer P5
+python3 -m p_layer recall "portone"
+python3 -m p_layer assemble --budget 12000     # 규칙 먼저, 최근 지식 다음
 ```
 
 Python API:
 
 ```python
-from memcore.store import Store, WriteDenied
+from p_layer.store import Store, WriteDenied
 
 db = Store()
 db.add_knowledge("client prefers weekly sync", type="preference", layer="P6", who="agent")
@@ -89,10 +89,10 @@ MCP (opencode / Claude Desktop / Cursor):
 ```json
 {
   "mcp": {
-    "memcore": {
+    "p-layers": {
       "type": "local",
-      "command": ["python3", "-m", "memcore", "serve"],
-      "env": { "MEMCORE_DB": "~/.memcore/memory.db" }
+      "command": ["python3", "-m", "p-layers", "serve"],
+      "env": { "P_LAYER_DB": "~/.p_layer/memory.db" }
     }
   }
 }
@@ -123,34 +123,34 @@ python3 -m unittest discover -s tests -v   # 133개 테스트 (PG 22개는 DSN �
 - `examples/quickstart.py` — API 워크스루
 - `examples/demo_import_eval.sh` — 전체 이주 스토리: drewgent 픽스처(지식+세션+온톨로지+볼트 파일) → 이식 → 볼트 인제스트 → 거버넌스 전후 eval → 감사 → 그래프 → 모순 → 위키
 - `examples/suite.example.json` — eval 스위트 형식
-- `examples/opencode-memcore.jsonc` — drewgent의 remember/recall 툴을 대체하는 MCP 설정 (복붙용)
+- `examples/opencode-p-layer.jsonc` — drewgent의 remember/recall 툴을 대체하는 MCP 설정 (복붙용)
 
-## drewgent 메모리를 memcore로 교체하기
+## drewgent 메모리를 p-layers로 교체하기
 
-볼트(정체성·페르소나·스킬 파일)는 파일로 유지한다 — 저장소 클래스가 다르며 DB가 되어서는 안 된다. memcore는 **지식 레이어**를 대체한다:
+볼트(정체성·페르소나·스킬 파일)는 파일로 유지한다 — 저장소 클래스가 다르며 DB가 되어서는 안 된다. p-layers는 **지식 레이어**를 대체한다:
 
 ```bash
 # 1. 데이터 이주 (지식 + 엔티티 + 관계 + 세션)
-python3 -m memcore import-drewgent ~/.drewgent/.opencode/knowledge.db --embed ollama
+python3 -m p_layer import-drewgent ~/.drewgent/.opencode/knowledge.db --embed ollama
 
 # 2. 볼트 중 스토어에 속하는 것만 인제스트 (선택)
-python3 -m memcore import-rules ~/.drewgent/@identity/brain/rules.md
-python3 -m memcore import-incidents ~/.drewgent/P6-prefrontal/incidents
+python3 -m p_layer import-rules ~/.drewgent/@identity/brain/rules.md
+python3 -m p_layer import-incidents ~/.drewgent/P6-prefrontal/incidents
 
-# 3. 에이전트를 MCP 서버로 연결 (examples/opencode-memcore.jsonc),
-#    AGENTS.md의 툴 지시도 memcore 기준으로 교체
+# 3. 에이전트를 MCP 서버로 연결 (examples/opencode-p-layer.jsonc),
+#    AGENTS.md의 툴 지시도 p-layers 기준으로 교체
 ```
 
-교체 후 `memcore eval suite.json`이 증명한다: 같은 데이터, 거버넌스 메타데이터 적용 시 recall@k 0.667 → 1.000, ACL 30/30.
+교체 후 `p-layer eval suite.json`이 증명한다: 같은 데이터, 거버넌스 메타데이터 적용 시 recall@k 0.667 → 1.000, ACL 30/30.
 
 ## PostgreSQL 백엔드 (멀티에이전트 / SMB 단계)
 
 `PgStore`는 SQLite `Store` 인터페이스를 그대로 미러링한다 — 같은 메서드, 같은 거버넌스, 양 백엔드에 모든 행동 단언을 실행하는 공유 패리티 스위트로 검증된다.
 
 ```python
-from memcore.pgstore import PgStore
+from p_layer.pgstore import PgStore
 
-db = PgStore("dbname=memory host=localhost user=me")   # 또는 MEMCORE_PG_DSN
+db = PgStore("dbname=memory host=localhost user=me")   # 또는 P_LAYER_PG_DSN
 db.add_knowledge("switched to portone v2", type="decision", layer="P5")
 print(db.recall("portone"))
 ```

@@ -3,18 +3,18 @@ SQLite `Store` and the PostgreSQL `PgStore`. This is the guard against the
 dual-backend drift that plagued p-layer: if the two engines ever disagree,
 these tests fail.
 
-PG side skips when no PostgreSQL is reachable (MEMCORE_TEST_PG_DSN).
+PG side skips when no PostgreSQL is reachable (P_LAYER_TEST_PG_DSN).
 """
 import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.embed import NoopEmbedder
-from memcore.store import Store, WriteDenied
+from p_layer.embed import NoopEmbedder
+from p_layer.store import Store, WriteDenied
 
 TEST_DSN = os.environ.get(
-    "MEMCORE_TEST_PG_DSN", "dbname=memcore_test host=/tmp port=55432 user=postgres"
+    "P_LAYER_TEST_PG_DSN", "dbname=p_layer_test host=/tmp port=55432 user=postgres"
 )
 
 
@@ -154,7 +154,7 @@ class PgParityTests(BackendParityBase, unittest.TestCase):
     backend = "postgresql"
 
     def make_store(self):
-        from memcore.pgstore import PgStore
+        from p_layer.pgstore import PgStore
 
         try:
             s = PgStore(TEST_DSN, embedder=NoopEmbedder())

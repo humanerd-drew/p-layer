@@ -1,12 +1,12 @@
-"""Eval harness tests: recall@k (memcore vs drewgent baseline) + ACL compliance."""
+"""Eval harness tests: recall@k (p_layer vs drewgent baseline) + ACL compliance."""
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.embed import NoopEmbedder
-from memcore.eval import acl_compliance, build_drewgent_baseline, load_suite, recall_at_k, run_eval
-from memcore.store import Store
+from p_layer.embed import NoopEmbedder
+from p_layer.eval import acl_compliance, build_drewgent_baseline, load_suite, recall_at_k, run_eval
+from p_layer.store import Store
 
 
 def _store(self, entries):
@@ -20,9 +20,9 @@ def _store(self, entries):
 
 
 class RecallEvalTests(unittest.TestCase):
-    def test_memcore_beats_baseline_on_confidence_ranking(self):
+    def test_p_layer_beats_baseline_on_confidence_ranking(self):
         # Same FTS relevance; baseline returns insertion order (low confidence
-        # first), memcore ranks by confidence. Expected entry must be top-1.
+        # first), p_layer ranks by confidence. Expected entry must be top-1.
         s = _store(self, [
             {"content": "the payment gateway retries on failure", "type": "pattern", "confidence": 0.2},
             {"content": "the payment gateway retries with exponential backoff per provider docs",
@@ -35,9 +35,9 @@ class RecallEvalTests(unittest.TestCase):
         }
         result = run_eval(s, suite)
         base = result["recall"]["baseline"]["_total"]
-        mem = result["recall"]["memcore"]["_total"]
+        mem = result["recall"]["p_layer"]["_total"]
         self.assertEqual(base["recall@k"], 0.0)   # baseline returns the low-confidence entry
-        self.assertEqual(mem["recall@k"], 1.0)   # memcore returns the high-confidence entry
+        self.assertEqual(mem["recall@k"], 1.0)   # p_layer returns the high-confidence entry
         self.assertGreater(mem["recall@k"], base["recall@k"])
 
     def test_superseded_entries_absent_from_both_engines(self):
@@ -50,7 +50,7 @@ class RecallEvalTests(unittest.TestCase):
         result = run_eval(s, suite)
         # baseline copies only active rows, so both engines miss — correctly.
         self.assertEqual(result["recall"]["baseline"]["_total"]["hits"], 0)
-        self.assertEqual(result["recall"]["memcore"]["_total"]["hits"], 0)
+        self.assertEqual(result["recall"]["p_layer"]["_total"]["hits"], 0)
 
     def test_load_suite_validates(self):
         tmp = tempfile.TemporaryDirectory()
@@ -81,7 +81,7 @@ class AclComplianceTests(unittest.TestCase):
         self.assertEqual(result["passed"], result["total"])
 
     def test_every_allowed_writer_passes(self):
-        from memcore.store import LAYER_WRITERS, _check_layer_write
+        from p_layer.store import LAYER_WRITERS, _check_layer_write
 
         for layer, allowed in LAYER_WRITERS.items():
             for who in allowed:

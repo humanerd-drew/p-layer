@@ -1,9 +1,9 @@
-# memcore — the repo root is a shared scratch workspace, so ignore everything
+# p-layer — the repo root is a shared scratch workspace, so ignore everything
 # and whitelist only the project. Nothing else in this directory gets tracked.
 
 *
-!memcore/
-!memcore/**
+!p_layer/
+!p_layer/**
 !tests/
 !tests/**
 !examples/

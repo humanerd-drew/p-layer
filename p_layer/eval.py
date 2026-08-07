@@ -4,10 +4,10 @@ Two engines, same data:
 
   baseline  — drewgent's knowledge-db.ts recall path (naive FTS5 OR-join,
               quote-stripped, no confidence/freshness/diversification).
-  memcore   — hybrid FTS5+semantic RRF fusion, confidence & freshness ranked,
+  p_layer   — hybrid FTS5+semantic RRF fusion, confidence & freshness ranked,
               superseded excluded, type-diversified.
 
-`memcore eval <suite.json>` reports recall@k for both plus ACL compliance:
+`p_layer eval <suite.json>` reports recall@k for both plus ACL compliance:
 the share of (layer, who) enforcement cases the store gets right. That is the
 "governance, not just retrieval" evidence: writes are denied in code, and
 ranking beats the naive baseline.
@@ -70,8 +70,8 @@ def build_drewgent_baseline(store: Store) -> sqlite3.Connection:
 
 
 def recall_at_k(store: Store, baseline: sqlite3.Connection, suite: dict) -> dict:
-    results: dict[str, dict] = {"baseline": {}, "memcore": {}}
-    totals = {"baseline": {"hits": 0, "expected": 0}, "memcore": {"hits": 0, "expected": 0}}
+    results: dict[str, dict] = {"baseline": {}, "p_layer": {}}
+    totals = {"baseline": {"hits": 0, "expected": 0}, "p_layer": {"hits": 0, "expected": 0}}
     baseline_contents = {
         r["id"]: r["content"]
         for r in baseline.execute("SELECT id, content FROM knowledge").fetchall()
@@ -80,7 +80,7 @@ def recall_at_k(store: Store, baseline: sqlite3.Connection, suite: dict) -> dict
         k = int(q.get("k", 5))
         expected = [e.lower() for e in q["expected"]]
         totals["baseline"]["expected"] += len(expected)
-        totals["memcore"]["expected"] += len(expected)
+        totals["p_layer"]["expected"] += len(expected)
 
         base_ids = _drewgent_baseline_search(baseline, q["query"], k)
         base_hits = sum(1 for e in expected if any(e in baseline_contents.get(i, "").lower() for i in base_ids))
@@ -88,12 +88,12 @@ def recall_at_k(store: Store, baseline: sqlite3.Connection, suite: dict) -> dict
 
         mem = store.recall(q["query"], limit=k, serendipity=False)
         mem_hits = sum(1 for e in expected if any(e in r["content"].lower() for r in mem))
-        totals["memcore"]["hits"] += mem_hits
+        totals["p_layer"]["hits"] += mem_hits
 
         results["baseline"][q["query"]] = {"recall@k": base_hits / len(expected), "hits": base_hits, "expected": len(expected)}
-        results["memcore"][q["query"]] = {"recall@k": mem_hits / len(expected), "hits": mem_hits, "expected": len(expected)}
+        results["p_layer"][q["query"]] = {"recall@k": mem_hits / len(expected), "hits": mem_hits, "expected": len(expected)}
 
-    for engine in ("baseline", "memcore"):
+    for engine in ("baseline", "p_layer"):
         t = totals[engine]
         results[engine]["_total"] = {
             "recall@k": (t["hits"] / t["expected"]) if t["expected"] else 0.0,
@@ -161,11 +161,11 @@ def run_eval(store: Store, suite: dict) -> dict:
 def format_report(result: dict) -> str:
     recall = result["recall"]
     acl = result["acl"]
-    b, m = recall["baseline"]["_total"], recall["memcore"]["_total"]
+    b, m = recall["baseline"]["_total"], recall["p_layer"]["_total"]
     lines = [
         "recall@k (same data, two engines):",
         f"  drewgent baseline : {b['recall@k']:.3f} ({b['hits']}/{b['expected']})",
-        f"  memcore           : {m['recall@k']:.3f} ({m['hits']}/{m['expected']})",
+        f"  p-layer            : {m['recall@k']:.3f} ({m['hits']}/{m['expected']})",
         f"  delta             : {m['recall@k'] - b['recall@k']:+.3f}",
         "",
         f"ACL compliance: {acl['pass_rate']:.1%} ({acl['passed']}/{acl['total']}) enforcement cases correct",

@@ -110,7 +110,7 @@ class NoopEmbedder(Embedder):
 
 
 def load_embedder(name: str | None = None) -> Embedder:
-    name = name or os.environ.get("MEMCORE_EMBED", "ollama")
+    name = name or os.environ.get("P_LAYER_EMBED", "ollama")
     if name == "ollama":
         return OllamaEmbedder()
     if name == "hash":

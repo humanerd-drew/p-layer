@@ -1,6 +1,6 @@
 """Minimal MCP stdio server (JSON-RPC 2.0, newline-delimited). Zero dependencies.
 
-Implements just enough of the Model Context Protocol to expose memcore as a
+Implements just enough of the Model Context Protocol to expose p_layer as a
 drop-in memory server for any MCP client (opencode, Claude, Cursor, ...):
 initialize / notifications/initialized / ping / tools/list / tools/call.
 
@@ -15,7 +15,7 @@ import sys
 from .store import KNOWLEDGE_TYPES, Store
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "memcore", "version": "0.6.0"}
+SERVER_INFO = {"name": "p-layers", "version": "0.6.0"}
 
 TOOLS = [
     {
@@ -185,7 +185,7 @@ def _call_tool(name: str, arguments: dict, store: Store) -> str:
             type=arguments.get("type", "fact"),
             source=arguments.get("source"),
             layer=arguments.get("layer", "P5"),
-            who="tool:memcore",
+            who="tool:p_layer",
             confidence=float(arguments.get("confidence", 1.0)),
             ttl_days=arguments.get("ttl_days"),
         )

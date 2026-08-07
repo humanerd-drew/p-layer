@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""memcore quickstart — API walkthrough: remember, recall, governance, audit.
+"""p_layer quickstart — API walkthrough: remember, recall, governance, audit.
 
 Run:  python3 examples/quickstart.py
 """
@@ -9,8 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from memcore.embed import NoopEmbedder
-from memcore.store import Store, WriteDenied
+from p_layer.embed import NoopEmbedder
+from p_layer.store import Store, WriteDenied
 
 db = Store(str(Path(tempfile.mkdtemp()) / "memory.db"), embedder=NoopEmbedder())
 

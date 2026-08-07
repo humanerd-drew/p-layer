@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# memcore proof pipeline — the full drewgent -> memcore migration story.
+# p_layer proof pipeline — the full drewgent -> p_layer migration story.
 #
 #   1. builds a drewgent-style workspace fixture (knowledge.db WITH sessions,
 #      entities, relations, plus vault files: rules.md and P6 incidents)
@@ -70,46 +70,46 @@ MD
 
 cp examples/suite.example.json "$SUITE"
 
-export MEMCORE_EMBED=hash
-export MEMCORE_DB="$DST"
+export P_LAYER_EMBED=hash
+export P_LAYER_DB="$DST"
 
 echo "== 1. import drewgent workspace (knowledge + sessions + ontology) =="
-python3 -m memcore import-drewgent "$SRC" --no-embed
+python3 -m p_layer import-drewgent "$SRC" --no-embed
 
 echo
 echo "== 2. ingest the vault (rules.md -> rules, incidents -> episodes) =="
-python3 -m memcore import-rules "$RULES"
-python3 -m memcore import-incidents "$INCIDENTS"
+python3 -m p_layer import-rules "$RULES"
+python3 -m p_layer import-incidents "$INCIDENTS"
 
 echo
 echo "== 3. BEFORE governance: imported flat, all confidence 1.0 =="
-python3 -m memcore eval "$SUITE"
+python3 -m p_layer eval "$SUITE"
 
 echo
 echo "== decoy (#2) marked low-confidence, truth (#3) stays 1.0 =="
-python3 -m memcore update 2 --confidence 0.2 >/dev/null
+python3 -m p_layer update 2 --confidence 0.2 >/dev/null
 
 echo
 echo "== AFTER governance: confidence-ranked =="
-python3 -m memcore eval "$SUITE"
+python3 -m p_layer eval "$SUITE"
 
 echo
 echo "== 4. denied write is on the record =="
-python3 -m memcore remember "rotate the api key weekly" --layer P0 --who agent 2>/dev/null || echo "(denied, exit=$?)"
-python3 -m memcore audit --denied-only
+python3 -m p_layer remember "rotate the api key weekly" --layer P0 --who agent 2>/dev/null || echo "(denied, exit=$?)"
+python3 -m p_layer audit --denied-only
 
 echo
 echo "== 5. graph: explore / trace / rca / closure =="
-python3 -m memcore graph explore "portone"
-python3 -m memcore graph rca "deploy-failed"
-python3 -m memcore graph closure 3 --rel depends_on
+python3 -m p_layer graph explore "portone"
+python3 -m p_layer graph rca "deploy-failed"
+python3 -m p_layer graph closure 3 --rel depends_on
 
 echo
 echo "== 6. contradictions =="
-python3 -m memcore rules add "never expose secrets in logs" --priority 100 >/dev/null
-python3 -m memcore contradictions || true
+python3 -m p_layer rules add "never expose secrets in logs" --priority 100 >/dev/null
+python3 -m p_layer contradictions || true
 
 echo
 echo "== 7. P5 wiki =="
-python3 -m memcore compile-wiki "$WIKI" >/dev/null
+python3 -m p_layer compile-wiki "$WIKI" >/dev/null
 find "$WIKI" -type f -name "*.md" | sort

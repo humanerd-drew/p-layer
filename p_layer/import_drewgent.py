@@ -1,7 +1,7 @@
-"""Import a drewgent knowledge.db into a memcore store.
+"""Import a drewgent knowledge.db into a p_layer store.
 
-This is the migration path: real drewgent data in, a single-schema memcore
-store out. Knowledge rows are re-embedded under memcore's embedding version;
+This is the migration path: real drewgent data in, a single-schema p_layer
+store out. Knowledge rows are re-embedded under p_layer's embedding version;
 entities/relations are carried over with their type constraints re-validated.
 """
 from __future__ import annotations

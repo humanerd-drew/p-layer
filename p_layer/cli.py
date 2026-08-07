@@ -1,4 +1,4 @@
-"""memcore CLI — init, remember, recall, stats, assemble, rules, serve, import.
+"""p_layer CLI — init, remember, recall, stats, assemble, rules, serve, import.
 
 Layer governance: remember/update accept --layer (P0-P6); writes are ACL-checked
 against LAYER_WRITERS with the principal from --who (default system).
@@ -14,13 +14,13 @@ from .store import DEFAULT_DB, KNOWLEDGE_TYPES, Store
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="memcore", description="Production-grade agent memory layer")
+    p = argparse.ArgumentParser(prog="p-layer", description="Production-grade agent memory layer")
     p.add_argument("--db", default=None, help=f"SQLite path (default: {DEFAULT_DB})")
     p.add_argument(
         "--embed",
         default=None,
         choices=["ollama", "hash", "none"],
-        help="embedder override (default: MEMCORE_EMBED or ollama)",
+        help="embedder override (default: P_LAYER_EMBED or ollama)",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -58,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--type", choices=KNOWLEDGE_TYPES, default=None)
     u.add_argument("--confidence", type=float, default=None)
     u.add_argument("--layer", choices=["P0", "P1", "P2", "P3", "P4", "P5", "P6"], default=None)
-    ev = sub.add_parser("eval", help="run the eval suite: recall@k (memcore vs drewgent baseline) + ACL compliance")
+    ev = sub.add_parser("eval", help="run the eval suite: recall@k (p_layer vs drewgent baseline) + ACL compliance")
     ev.add_argument("suite", help="path to eval suite JSON")
     ev.add_argument("--json", action="store_true")
 
@@ -124,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("serve", help="run the MCP stdio server")
 
-    imp = sub.add_parser("import-drewgent", help="import a drewgent knowledge.db into memcore")
+    imp = sub.add_parser("import-drewgent", help="import a drewgent knowledge.db into p_layer")
     imp.add_argument("src", help="path to drewgent knowledge.db")
     imp.add_argument("--no-embed", action="store_true")
 

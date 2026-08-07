@@ -6,7 +6,7 @@ Desktop) would. Runs in CI on ubuntu where the SDK's stdio transport works.
 Skipped locally on macOS: the SDK's stdio transport crashes in this
 environment with an anyio cancel-scope bug (`Attempted to exit cancel scope
 in a different task`) — reproduced against the official reference server,
-so it is an SDK/environment defect, not a memcore one. The wire-level
+so it is an SDK/environment defect, not a p_layer one. The wire-level
 transport is covered unconditionally by test_mcp_wire.py.
 """
 import asyncio
@@ -37,10 +37,10 @@ except ImportError:
 class SdkClientTests(unittest.TestCase):
     def test_sdk_client_full_session(self):
         tmp = tempfile.mkdtemp()
-        env = dict(os.environ, MEMCORE_DB=str(Path(tmp) / "memory.db"), MEMCORE_EMBED="hash")
+        env = dict(os.environ, P_LAYER_DB=str(Path(tmp) / "memory.db"), P_LAYER_EMBED="hash")
         params = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "memcore", "serve"],
+            args=["-m", "p_layer", "serve"],
             env=env,
             cwd=str(Path(__file__).resolve().parent.parent),
         )
@@ -50,7 +50,7 @@ class SdkClientTests(unittest.TestCase):
             session = await ClientSession(read, write).__aenter__()
             try:
                 init = await session.initialize()
-                self.assertEqual(init.serverInfo.name, "memcore")
+                self.assertEqual(init.serverInfo.name, "p-layers")
                 tools = await session.list_tools()
                 names = {t.name for t in tools.tools}
                 self.assertIn("remember", names)

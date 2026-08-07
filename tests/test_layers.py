@@ -4,10 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from memcore.embed import NoopEmbedder
-from memcore.mcp import handle_message
-from memcore.migrations import migrate
-from memcore.store import Store, WriteDenied
+from p_layer.embed import NoopEmbedder
+from p_layer.mcp import handle_message
+from p_layer.migrations import migrate
+from p_layer.store import Store, WriteDenied
 
 
 class MigrationUpgradeTests(unittest.TestCase):
@@ -61,7 +61,7 @@ class LayerAclTests(unittest.TestCase):
 
     def test_tool_allowed_on_p5(self):
         s = self._store()
-        s.add_knowledge("fact", layer="P5", who="tool:memcore")  # principal 'tool' allowed
+        s.add_knowledge("fact", layer="P5", who="tool:p_layer")  # principal 'tool' allowed
 
     def test_principal_prefix_extraction(self):
         s = self._store()
@@ -232,7 +232,7 @@ class McpLayerTests(unittest.TestCase):
 
     def test_mcp_remember_respects_layer_acl(self):
         s = self._store()
-        r = self._call(s, "remember", {"fact": "x", "layer": "P0"})  # who=tool:memcore, denied on P0
+        r = self._call(s, "remember", {"fact": "x", "layer": "P0"})  # who=tool:p_layer, denied on P0
         self.assertIn("error", r)
         self.assertIn("does not allow", r["error"]["message"])
 
