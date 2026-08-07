@@ -82,6 +82,37 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(stats["relations"], 1)
         self.assertEqual(stats["episodes"], 1)  # the drewgent session row
 
+    def test_import_adapts_to_archive_entity_schema(self):
+        # The real drewgent archive's entities table has no type_parent column;
+        # the importer must adapt instead of silently dropping the ontology.
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src = Path(tmp.name) / "archive.db"
+        db = sqlite3.connect(str(src))
+        db.executescript(
+            """
+            CREATE TABLE knowledge (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL DEFAULT 'fact', content TEXT NOT NULL, source TEXT, created_at TEXT);
+            CREATE TABLE entities (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL, type TEXT NOT NULL, properties TEXT DEFAULT '{}',
+                knowledge_id INTEGER, created_at TEXT, updated_at TEXT);
+            """
+        )
+        db.execute("INSERT INTO knowledge (type, content) VALUES ('seo', '마케팅 전략 문서')")
+        db.execute("INSERT INTO entities (label, type, properties) VALUES (?,?,?)",
+                   ("UniClipboard", "tool", '{"stars": "1.2k"}'))
+        db.execute("INSERT INTO entities (label, type, properties) VALUES (?,?,?)",
+                   ("iroh P2P stack", "tool", '{"why": "P2P stack"}'))
+        db.commit()
+        db.close()
+
+        store = Store(str(Path(tmp.name) / "m.db"), embedder=NoopEmbedder())
+        self.addCleanup(store.close)
+        summary = import_drewgent(src, store, reembed=False)
+        self.assertEqual(summary["knowledge_imported"], 1)
+        self.assertEqual(summary["entities_imported"], 2)  # was 0 before the fix
+        self.assertEqual(store.stats()["entities"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

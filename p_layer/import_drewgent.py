@@ -41,19 +41,30 @@ def import_drewgent(src_path: str | Path, store: Store, reembed: bool = True) ->
         idmap: dict[int, int] = {}
         entities = []
         try:
+            # Source schemas vary: the drewgent archive's entities table has no
+            # type_parent column. Adapt to what actually exists instead of
+            # failing and silently dropping the ontology.
+            have = {r["name"] for r in src.execute("PRAGMA table_info(entities)").fetchall()}
+            cols = [c for c in ("id", "label", "type", "type_parent", "properties", "knowledge_id")
+                    if c in have]
             entities = src.execute(
-                "SELECT id, label, type, type_parent, properties FROM entities ORDER BY id"
+                f"SELECT {', '.join(cols)} FROM entities ORDER BY id"
             ).fetchall()
             for e in entities:
                 props = {}
                 try:
                     props = json.loads(e["properties"] or "{}")
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, KeyError):
                     pass
-                nid = store.add_entity(e["label"], e["type"] or "concept", properties=props)
+                nid = store.add_entity(
+                    e["label"], e["type"] or "concept",
+                    properties=props,
+                    knowledge_id=e["knowledge_id"] if "knowledge_id" in cols else None,
+                )
                 idmap[e["id"]] = nid
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as exc:
+            # never swallow ontology failure silently — surface it in the summary
+            print(f"⚠ entities import failed: {exc}", file=sys.stderr)
 
         relations_ok = 0
         relations_skipped = 0
