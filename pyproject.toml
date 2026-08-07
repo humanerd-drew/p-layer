@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "p-layers"
 version = "0.6.0"
-description = "Governed memory for AI agents — P0-P6 layer governance enforced in code. SQLite + FTS5 + pluggable embeddings, PostgreSQL backend, MCP server, eval harness. (GitHub: p-layer)"
+description = "Memory for AI agents with rules that are kept, not just written. P0-P6 layered rules enforced in code. SQLite + FTS5 + pluggable embeddings, PostgreSQL backend, MCP server, eval harness. (GitHub: p-layer)"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 dependencies = []

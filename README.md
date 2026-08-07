@@ -1,6 +1,6 @@
 # p-layer
 
-**Memory for AI agents that is governed, not just stored.**
+**Memory for AI agents with rules that are kept, not just written.**
 
 AI assistants today are brilliant and forgetful. When a conversation ends, what was decided in it — which payment system you switched to, how a client prefers to be contacted, what actually fixed a bug — ends with it. The next session starts from zero. And when an agent *does* keep notes, there is no control: anyone can write anything, rules are suggestions, and nothing is ever traced.
 
@@ -26,7 +26,7 @@ It is small, has zero dependencies, speaks the standard connector (MCP) that Cla
 2. **Rules are only suggestions.** "Never change the pricing policy" lives in a text file and is *hoped* to be followed, not enforced. The agent that is supposed to obey it is also the one that can edit it.
 3. **Everything accumulates, nothing is organized.** Raw session logs pile up forever. Finding "the time we fixed the payment bug" means searching through everything.
 
-p-layer is the answer to those three failures: **governance first, retrieval second.**
+p-layer is the answer to those three failures: **rules first, retrieval second.**
 
 ---
 
@@ -103,7 +103,7 @@ same data, two engines:
   p-layer           : 1.000 (3/3)      ← finds all 3
 ```
 
-In plain words: when asked to retrieve specific past decisions, p-layer found everything the baseline missed, because it ranks by **how certain the memory was** and **how fresh it is**, not just by word matching. And the governance is not theoretical: all 30 permission rules (every layer × every writer) are enforced correctly by the system.
+In plain words: when asked to retrieve specific past decisions, p-layer found everything the baseline missed, because it ranks by **how certain the memory was** and **how fresh it is**, not just by word matching. And these rules are not theoretical: all 30 permission rules (every layer × every writer) are enforced correctly by the system.
 
 ---
 
