@@ -107,16 +107,23 @@ def perf_benchmark():
                 type="fact", source="bench",
             )
         dt = time.perf_counter() - t0
-        lat = []
+        base = build_drewgent_baseline(s)
+        lat_p, lat_b = [], []
         for i in range(50):
             q = f"b2b 세그먼트 {i % n}"
             t1 = time.perf_counter()
             s.recall(q, limit=5, serendipity=False)
-            lat.append((time.perf_counter() - t1) * 1000)
+            lat_p.append((time.perf_counter() - t1) * 1000)
+            t1 = time.perf_counter()
+            _drewgent_baseline_search(base, q, 5)
+            lat_b.append((time.perf_counter() - t1) * 1000)
+        base.close()
         results[n] = {
             "insert_ms_per_op": round(dt / n * 1000, 2),
-            "recall_p50_ms": round(statistics.median(lat), 2),
-            "recall_p95_ms": round(sorted(lat)[int(len(lat) * 0.95)], 2),
+            "p_layer_recall_p50_ms": round(statistics.median(lat_p), 2),
+            "p_layer_recall_p95_ms": round(sorted(lat_p)[int(len(lat_p) * 0.95)], 2),
+            "baseline_search_p50_ms": round(statistics.median(lat_b), 2),
+            "baseline_search_p95_ms": round(sorted(lat_b)[int(len(lat_b) * 0.95)], 2),
         }
     s.close()
     return results
@@ -150,11 +157,12 @@ def main():
     print(f"  {'drewgent':12}{res['base']['recall@1']:>10.3f}{res['base']['recall@5']:>10.3f}{res['base']['mrr']:>10.3f}")
     print(f"  {'p-layer':12}{res['p_layer']['recall@1']:>10.3f}{res['p_layer']['recall@5']:>10.3f}{res['p_layer']['mrr']:>10.3f}")
 
-    print("\n[perf] SQLite (WAL) — bulk insert + recall latency")
+    print("\n[perf] SQLite (WAL) — bulk insert + query latency (p-layer vs drewgent baseline)")
     perf = perf_benchmark()
-    print(f"  {'size':>8}{'insert ms/op':>14}{'recall p50 ms':>16}{'recall p95 ms':>16}")
+    print(f"  {'size':>8}{'insert ms/op':>14}{'p-layer p50':>14}{'p-layer p95':>14}{'baseline p50':>15}{'baseline p95':>15}")
     for n, r in perf.items():
-        print(f"  {n:>8}{r['insert_ms_per_op']:>14}{r['recall_p50_ms']:>16}{r['recall_p95_ms']:>16}")
+        print(f"  {n:>8}{r['insert_ms_per_op']:>14}{r['p_layer_recall_p50_ms']:>14}"
+              f"{r['p_layer_recall_p95_ms']:>14}{r['baseline_search_p50_ms']:>15}{r['baseline_search_p95_ms']:>15}")
 
     print("\n" + "=" * 60)
 
