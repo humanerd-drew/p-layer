@@ -1,195 +1,164 @@
 # p-layer
 
-**Governed memory for AI agents.** A stdlib-only Python memory layer — SQLite + FTS5 + pluggable embeddings — with P0-P6 layer governance enforced in code, not prose.
+**Memory for AI agents that is governed, not just stored.**
 
-[![CI](https://github.com/humanerd-drew/p-layers/actions/workflows/ci.yml/badge.svg)](https://github.com/humanerd-drew/p-layers/actions/workflows/ci.yml)
+AI assistants today are brilliant and forgetful. When a conversation ends, what was decided in it — which payment system you switched to, how a client prefers to be contacted, what actually fixed a bug — ends with it. The next session starts from zero. And when an agent *does* keep notes, there is no control: anyone can write anything, rules are suggestions, and nothing is ever traced.
+
+p-layer gives an agent a memory that works like a well-run organization instead of a junk drawer:
+
+- it **remembers across sessions** and finds what you need even weeks later,
+- it is **organized in layers with clear jobs** — from rules that must never change, to incident reports,
+- it **enforces its own rules** — the system refuses and records a write that isn't allowed, instead of trusting a prompt,
+- it **never destroys** — old versions are superseded, and the full history stays,
+- and it **puts everything on the record** — every write, every refused write, is audited.
+
+It is small, has zero dependencies, speaks the standard connector (MCP) that Claude, opencode, and Cursor already use, and runs on your own machine.
+
+---
+
+## The problem this is trying to solve
+
+**Agents are amnesiacs.** A chatbot or coding agent only "remembers" what is in the current window. Ask it next week about the decision it made today and it will guess. The first fix for this is a memory store — a place where facts survive. That part is easy.
+
+**The hard part is control.** Once an agent can write to a long-term memory, three things go wrong:
+
+1. **Anyone can write anything.** A stray thought gets saved as if it were a company rule, and nobody can tell the difference.
+2. **Rules are only suggestions.** "Never change the pricing policy" lives in a text file and is *hoped* to be followed, not enforced. The agent that is supposed to obey it is also the one that can edit it.
+3. **Everything accumulates, nothing is organized.** Raw session logs pile up forever. Finding "the time we fixed the payment bug" means searching through everything.
+
+p-layer is the answer to those three failures: **governance first, retrieval second.**
+
+---
+
+## The design direction — five principles
+
+### 1. Memory is organized in layers, like a brain or an org chart
+
+Every piece of memory belongs to one of seven layers. Each layer has a job and rules about who may touch it:
+
+| Layer | What lives there | Plain-language purpose | Who may write |
+|---|---|---|---|
+| **P0** | Rules | The constitution. "Never expose secrets." Must not change. | only the system |
+| **P1** | Identity & persona | Who the agent is, how it speaks. | only the system |
+| **P2** | Raw sessions | Everything that happened, kept as-is. | system, gateways, cron |
+| **P3** | Tool integrations | What the agent can plug into. | system, gateways, cron |
+| **P4** | Skills & growth | What the agent has learned to do. | system, agent, human |
+| **P5** | Compiled knowledge | Distilled insights — the first place to look. | system, agent, tools |
+| **P6** | Incidents & fixes | What broke, why, and what fixed it. | system, agent, human |
+
+Lower layers are higher authority: a P0 rule wins over a P1 preference, without negotiation.
+
+### 2. Rules are enforced by the system, not by asking nicely
+
+When an agent tries to write to a layer it is not allowed to touch, the write is **refused with an error**, and the refusal itself is recorded. The rule is not a suggestion in a text file — it is a permission the system checks on every write.
+
+### 3. Memory is never destroyed — it is superseded
+
+There is no delete button that erases history. "Forgetting" marks an entry as superseded: it stops showing up in searches, but the record of it — and of what replaced it — remains. This is version control applied to memory.
+
+### 4. Everything is on the record
+
+An audit log records every write and every refused write: who did it, to which layer, when, and why. If something wrong ever lands in memory, you can see exactly how it got there — and roll the memory back to a snapshot from before it happened.
+
+### 5. Memory organizes itself
+
+Raw notes are fine for a while; they are not fine forever. p-layer runs maintenance the way a good organization does:
+
+- **Consolidation** — batches of raw session notes are distilled into short insights (the messy P2 becomes useful P5).
+- **A compiled wiki** — active knowledge is rendered into clean, per-layer pages with their origin story attached.
+- **Snapshots** — you can freeze the memory at a point in time and roll back to it.
+- **Re-embedding** — when the underlying understanding model changes, memory is re-indexed in the background instead of breaking.
+
+### One method, two homes
+
+The same memory, with the same rules, runs in two places:
+
+- **SQLite** — a single file on your machine. Perfect for one personal agent.
+- **PostgreSQL** — a shared database. For a team or a small business where several agents (or people) use one memory.
+
+The rules, layers, and behavior are identical in both; the same test suite verifies both so they cannot drift apart.
+
+---
+
+## How it works — one story
+
+Suppose your AI assistant is maintaining a small shop's payment system.
+
+1. **P6 — the incident.** The assistant discovers a payment bug. It writes an incident report: what happened, timeline, and its first guess at a root cause.
+2. **P0 — the rule check.** The root cause turns out to be a rule violation. The assistant proposes a rule amendment; only the system can actually change P0.
+3. **The knowledge graph.** The incident is linked to the payment tool and to the fix pattern it depends on. "What is related to this payment bug?" is now answerable by walking those links — a root-cause analysis.
+4. **Weeks later — recall.** A similar symptom appears. The assistant searches memory and the old incident surfaces, ranked by relevance and how certain it was — *before* the same mistake is repeated.
+5. **Nightly — consolidation.** The session's raw notes are distilled into a durable insight and added to the compiled knowledge.
+6. **The same bug never happens twice** — not because the agent is smarter, but because the organization of its memory remembered.
+
+---
+
+## Proof it works
+
+The same test data, two engines: the original naive approach and p-layer.
+
 ```
-7 layers. 1 memory. Every write audited.
+same data, two engines:
+  original baseline : 0.667 (2/3)      ← finds 2 of 3 things you asked for
+  p-layer           : 1.000 (3/3)      ← finds all 3
 ```
 
-[한국어](./README.ko.md)
+In plain words: when asked to retrieve specific past decisions, p-layer found everything the baseline missed, because it ranks by **how certain the memory was** and **how fresh it is**, not just by word matching. And the governance is not theoretical: all 30 permission rules (every layer × every writer) are enforced correctly by the system.
 
-## Why this exists
+---
 
-The P0-P6 "brain layer" memory idea (drewgent, p-layer) is sound, but the reference implementations carry the same core defects:
-
-| Defect | drewgent / p-layer | p-layers |
-|---|---|---|
-| Schema management | `CREATE TABLE IF NOT EXISTS` everywhere, no versioning | Forward-only, checksummed migrations (`schema_migrations`) |
-| Search index | External-content FTS5 + triggers (fragile; p-layer's `forget` breaks it) | Standalone FTS5, no trigger coupling |
-| Dual backends | Two parallel implementations that drift (TS + Python; SQLite + Pg with silent feature loss) | One implementation, one schema |
-| Governance | A table in the README ("P0 overrides everything") | **Enforced in code**: layer ACLs raise `WriteDenied` |
-| "Remember" tool | Hardcodes layer=P6, bypassing its own governance | Layer is a first-class write parameter, ACL-checked |
-
-This repo is the production-grade rebuild: the governance ideas ported from p-layer, the schema discipline the originals lacked, and an eval harness that proves governance improves retrieval.
-
-## What it does
-
-| Feature | What |
-|---|---|
-| **P0-P6 layer ACLs** | Who may write to each layer is enforced in code (`P0` system-only … `P6` agent+manual). Denied writes are audited. |
-| **Hybrid recall** | FTS5 + semantic (Ollama or pluggable), RRF fusion, ranked by confidence × freshness, type-diversified, superseded excluded. |
-| **Supersede-not-delete** | `forget`/`update` supersede entries; history is preserved and recall stops surfacing them. |
-| **Snapshots** | Freeze active entries under a version label; rollback supersedes everything after the snapshot. |
-| **Audit log** | Every write *and every denied write* is recorded — the compliance evidence. |
-| **Contradiction scan** | Heuristic scan (no LLM): conflicting rule priorities, cross-layer duplicates. |
-| **P5 wiki compile** | Offline compile of active memory into per-layer markdown with provenance + INDEX. |
-| **MCP server** | 12 tools (`remember`, `recall`, `forget`, `update`, `snapshot_*`, `memory_stats`, `memory_audit`, `assemble`, `graph_explore`, `graph_trace`, `graph_rca`) — zero-dependency stdio implementation, any client. |
-| **Import tool** | `import-drewgent` migrates an existing drewgent `knowledge.db` (schema re-validated, re-embedded, sessions carried into episodes). |
-| **Graph & inference** | `graph_explore` / `graph_trace` / `graph_rca` (caused/fixed_by chains) / `transitive_closure` — drewgent graph_query.py parity, cycle-safe traversal. |
-| **Vault ingest** | `import-rules` (rules.md → rules) and `import-incidents` (P6 incidents → episodes) — the vault stays files, p-layers references it. |
-| **p-layers compat** | This package is published on PyPI as **`p-layers`** (GitHub repo: p-layer). `p_layer/` keeps the 0.1.x `KnowledgeDB` API and `knowledge_*` MCP tools over this engine — existing p-layers integrations upgrade without code changes. |
-| **Re-embed job** | `reembed` backfills embeddings after a model switch; vectors are versioned (old versions stay queryable), recall only reads the current version. Idempotent. |
-| **Consolidation** | `consolidate` compresses unconsolidated episodes into `insight` digests — deterministic offline summarizer, pluggable LLM hook, idempotent, audited. |
-| **PostgreSQL backend** | `PgStore` — the same interface, governance, and parity-tested behavior on Postgres (pg_trgm ILIKE for CJK, pgvector semantic). Ops jobs stay SQLite-only, loudly. |
-
-## Proof: governance improves retrieval
-
-Same data, two engines, one command (`p-layer eval suite.json`):
-
-```
-recall@k (same data, two engines):
-  drewgent baseline : 0.667 (2/3)      ← naive FTS OR-join, insertion order
-  p-layer            : 1.000 (3/3)      ← confidence/freshness-ranked
-  delta             : +0.333
-ACL compliance: 100.0% (30/30) enforcement cases correct
-```
-
-The baseline can't move — it has no metadata. p-layers turns governance metadata (confidence, layer, supersession) into retrieval quality, and the ACL suite proves the governance is real: every (layer, who) combination is allowed or denied exactly as specified.
-
-## Quick start
+## Try it in two minutes
 
 ```bash
-# no dependencies — stdlib only (Python >= 3.9)
-export P_LAYER_EMBED=hash   # offline fallback; ollama is the default
+pip install p-layers
 export P_LAYER_DB=~/.p_layer/memory.db
+export P_LAYER_EMBED=hash    # offline mode; ollama is the default
 
-python3 -m p_layer init
-python3 -m p_layer remember "switched to portone v2 for payments" --type decision --layer P5
-python3 -m p_layer recall "portone"
-python3 -m p_layer assemble --budget 12000     # rules first, then recent knowledge
+p-layer remember "we switched to PortOne v2 for payments" --type decision
+p-layer recall "payment"
+p-layer assemble             # the rules + recent memory, ready for context
 ```
 
-Python API:
+No database to set up, no services to run. The memory is one file.
 
-```python
-from p_layer.store import Store, WriteDenied
+## Use it with your AI tools
 
-db = Store()
-db.add_knowledge("client prefers weekly sync", type="preference", layer="P6", who="agent")
-print(db.recall("weekly sync", limit=5))
-try:
-    db.add_knowledge("secret", layer="P0", who="agent")   # P0 is system-only
-except WriteDenied:
-    pass
-print(db.audit_log(denied_only=True))                     # the denial is on record
-```
-
-MCP (any client — opencode, Claude Desktop, Cursor):
+Agents talk to memory through **MCP**, the standard connector. Add one block to your tool's config and the agent can `remember`, `recall`, audit, snapshot, and trace root causes:
 
 ```json
 {
   "mcp": {
-    "p-layers": {
+    "p-layer": {
       "type": "local",
-      "command": ["python3", "-m", "p-layers", "serve"],
+      "command": ["python3", "-m", "p_layer", "serve"],
       "env": { "P_LAYER_DB": "~/.p_layer/memory.db" }
     }
   }
 }
 ```
 
-## Architecture
+---
 
-```
-                ┌─────────────────────────────────────────────┐
-  rules (P0-P1) │  knowledge (P2-P6)   episodes    entities/   │
-  precedence-   │  FTS5 + embeddings   append-only  relations  │
-  ordered       │  + confidence/TTL    (sessions,   (typed,    │
-                │  + superseded_by     incidents)   validated) │
-                └─────────────────────────────────────────────┘
-                    SQLite (WAL, FK on) — one schema, migrations v1→v3
-                                    │
-        ┌───────────────┬───────────┼──────────────┬────────────┐
-   recall (hybrid)  assemble (budget)  audit_log  contradictions  compile_wiki
-   RRF+conf+fresh   rules→recent       every write   heuristic     P5 wiki
-```
+## For developers — the technical shape
 
-Tables: `knowledge` · `knowledge_fts` · `embeddings` (versioned) · `episodes` · `entities` · `relations` (constraint-validated) · `rules` · `snapshots` · `audit_log` · `schema_migrations`.
-
-## Governance model
-
-| Layer | Purpose | Who may write |
-|---|---|---|
-| P0 | Immutable rules | system only |
-| P1 | Identity & persona | system only |
-| P2 | Raw session archive | system, gateway, cron |
-| P3 | Tool integrations | system, gateway, cron |
-| P4 | Skills & growth | system, cron, agent, manual |
-| P5 | Compiled knowledge | system, cron, agent, manual, tool |
-| P6 | Incidents & RCA | system, cron, agent, manual, tool |
-
-Precedence is data, not prose: lower priority/higher authority wins, and `assemble()` emits rules in precedence order under a token budget.
-
-## Development
+- **Engine**: `p_layer.store.Store` — SQLite + FTS5 + pluggable embeddings, forward-only checksummed migrations. One schema, one implementation.
+- **Governance**: P0-P6 layer ACLs enforced at write time (`WriteDenied`), supersede-not-delete, snapshots/rollback, full audit log, contradiction scan.
+- **Recall**: hybrid FTS5 + semantic, RRF fusion, ranked by confidence × freshness, superseded excluded, type-diversified.
+- **Graph**: typed entity/relation ontology with constraint validation, explore / trace / root-cause analysis / transitive closure (cycle-safe).
+- **Ops jobs**: `reembed` (versioned vector backfill), `consolidate` (episodic → semantic digests), `compile-wiki` (P5 pages). SQLite-only; on PostgreSQL they raise loudly rather than silently degrade.
+- **PostgreSQL**: `p_layer.pgstore.PgStore` — same interface and behavior, verified by a shared parity suite (pg_trgm ILIKE for CJK, pgvector optional).
+- **MCP server**: 13 tools, zero-dependency stdio implementation, verified end-to-end by wire-level tests (and against the official SDK in CI).
+- **Migration**: `import-drewgent` moves an existing drewgent `knowledge.db` in (schema re-validated, sessions preserved); `import-rules` / `import-incidents` bring vault files in.
+- **Tests**: 138 — SQLite + PostgreSQL parity, governance, graph, ops, MCP wire, packaging.
+- PyPI: **`p-layers`** · GitHub: **`p-layer`** · package: **`p_layer`** · console: **`p-layer`**
 
 ```bash
-python3 -m unittest discover -s tests -v   # 133 tests (22 PG tests skip without a DSN)
+python3 -m unittest discover -s tests -v   # no dependencies, no network
 ```
-
-## Examples
-
-- `examples/quickstart.py` — API walkthrough
-- `examples/demo_import_eval.sh` — the full migration story: drewgent fixture (knowledge + sessions + ontology + vault files) → import → vault ingest → eval before/after governance → audit → graph → contradictions → wiki
-- `examples/suite.example.json` — eval suite format
-- `examples/opencode-p-layer.jsonc` — ready-to-paste MCP config that replaces drewgent's remember/recall tooling
-
-## Replace drewgent's memory with p-layers
-
-The vault (identity, persona, skills as files) stays as files — it is a different storage class and should not be a database. p-layers replaces the *knowledge layer*:
-
-```bash
-# 1. migrate the data (knowledge + entities + relations + sessions)
-python3 -m p_layer import-drewgent ~/.drewgent/.opencode/knowledge.db --embed ollama
-
-# 2. ingest what the vault holds that belongs in the store (optional)
-python3 -m p_layer import-rules ~/.drewgent/@identity/brain/rules.md
-python3 -m p_layer import-incidents ~/.drewgent/P6-prefrontal/incidents
-
-# 3. point the agent at the MCP server (examples/opencode-p-layer.jsonc),
-#    and update AGENTS.md so it uses the p-layers tools
-```
-
-Then `p-layer eval suite.json` proves the swap: same data, recall@k 0.667 → 1.000 with governance metadata, ACL 30/30.
-
-## PostgreSQL backend (multi-agent / SMB phase)
-
-`PgStore` mirrors the SQLite `Store` interface — same methods, same governance, verified by a shared parity suite that runs every behavioral assertion against both backends.
-
-```python
-from p_layer.pgstore import PgStore
-
-db = PgStore("dbname=memory host=localhost user=me")   # or P_LAYER_PG_DSN
-db.add_knowledge("switched to portone v2", type="decision", layer="P5")
-print(db.recall("portone"))
-```
-
-- **FTS**: `to_tsvector('simple')` + ts_rank, complemented by a pg_trgm ILIKE search (CJK-friendly).
-- **Semantic**: pgvector (`vector(768)`), optional — without it the store is FTS-only and reports `semantic_available: false`.
-- **Safety**: `statement_timeout` + `connect_timeout` — lock waits become clean errors, never hangs.
-- **Ops boundary**: single-writer maintenance jobs (`reembed`, `consolidate`, `compile-wiki`) run on the SQLite store; on Pg they raise `NotImplementedError` loudly instead of silently degrading.
-- **CI**: a postgres service container runs the full suite against a real database in CI.
 
 ## Credits
 
-
-Built as a production-grade rebuild of ideas from:
-
-- [opencode-drewgent](https://github.com/humanerd-drew/opencode-drewgent) — P0-P6 vault concept, provenance convention
-- [p-layer](https://github.com/humanerd-drew/p-layer) — layer authority/ACL design, supersede-not-delete, confidence/TTL ranking, snapshots
-- [Gajae-Code](https://github.com/Yeachan-Heo/gajae-code) — agent orchestration conventions
-
-The critique that motivated this repo is documented in the README above; the credits are where the good ideas came from.
+Built as a production-grade rebuild of ideas from [opencode-drewgent](https://github.com/humanerd-drew/opencode-drewgent) (the P0-P6 vault concept) and [p-layer](https://github.com/humanerd-drew/p-layer) (layer authority/ACL design), with orchestration conventions from [Gajae-Code](https://github.com/Yeachan-Heo/gajae-code). The critique that motivated this project is in the section above; the good ideas came from these projects.
 
 ## License
 

@@ -1,176 +1,164 @@
 # p-layer
 
-**에이전트를 위한 거버넌스 메모리.** 의존성 0(Python 표준 라이브러리만)으로 동작하는 메모리 레이어 — SQLite + FTS5 + 플러그형 임베딩, 그리고 P0-P6 레이어 거버넌스를 **프롬프트가 아니라 코드로 강제**.
+**AI 에이전트를 위한, "저장만 되는" 것이 아니라 "통치되는" 메모리.**
+
+AI 비서는 똑똑하지만 건망증이 심하다. 대화가 끝나면 그 대화에서 정한 것들 — 결제 시스템을 어떤 걸로 바꿨는지, 거래처가 원하는 연락 방식, 버그를 실제로 고친 방법 — 도 함께 사라진다. 다음 세션은 빈 종이에서 시작한다. 그리고 에이전트가 메모를 *남기기 시작하면* 통제가 없다: 누구나 아무거나 쓸 수 있고, 규칙은 제안일 뿐이며, 아무것도 추적되지 않는다.
+
+p-layer는 에이전트에게 "잘 운영되는 조직"처럼 작동하는 메모리를 준다 — 잡동사니 서랍이 아니라:
+
+- **세션을 넘어 기억하고**, 몇 주가 지나도 필요한 것을 찾아낸다,
+- **역할이 분명한 레이어로 조직화**된다 — 절대 바뀌면 안 되는 규칙부터 사건 보고까지,
+- **자기 규칙을 스스로 강제**한다 — 허용되지 않는 쓰기는 프롬프트에 기대지 않고 시스템이 거부하고 기록한다,
+- **파괴하지 않는다** — 옛 버전은 대체(supersede)될 뿐, 전체 이력은 남는다,
+- **전부 기록에 남긴다** — 모든 쓰기와 모든 거부된 쓰기가 감사된다.
+
+작고, 의존성이 0이고, Claude·opencode·Cursor가 이미 쓰는 표준 연결 방식(MCP)을 말하며, 내 컴퓨터에서 돈다.
+
+---
+
+## 이 프로젝트가 풀려는 문제
+
+**에이전트는 건망증 환자다.** 챗봇이나 코딩 에이전트는 현재 창 안의 내용만 "기억"한다. 지난주에 내린 결정을 다음 주에 물어보면 추측할 뿐이다. 첫 번째 해결책은 메모리 저장소 — 사실이 살아남는 공간 — 이다. 그건 쉽다.
+
+**어려운 건 통제다.** 에이전트가 장기 메모리에 쓸 수 있게 되는 순간, 세 가지가 어긋난다:
+
+1. **누구나 아무거나 쓴다.** 엉뚱한 생각 하나가 마치 회사 규칙인 양 저장되고, 아무도 구분하지 못한다.
+2. **규칙은 제안일 뿐이다.** "가격 정책은 절대 바꾸지 마라"는 텍스트 파일에 있고 *지켜지길 바랄* 뿐, 강제되지 않는다. 그 규칙을 지켜야 하는 에이전트가 바로 그 규칙을 수정할 수도 있는 쪽이다.
+3. **쌓이기만 하고 정리되지 않는다.** 원시 세션 로그는 끝없이 쌓인다. "결제 버그 고쳤던 그때"를 찾으려면 모든 것을 뒤져야 한다.
+
+p-layer는 이 세 가지 실패에 대한 답이다: **검색보다 거버넌스가 먼저다.**
+
+---
+
+## 설계 방향 — 다섯 가지 원칙
+
+### 1. 메모리는 뇌나 조직도처럼 레이어로 조직된다
+
+모든 메모리는 일곱 레이어 중 하나에 속한다. 각 레이어는 역할과, 누가 건드릴 수 있는지에 대한 규칙을 갖는다:
+
+| 레이어 | 무엇이 사는가 | 쉽게 말하면 | 누가 쓸 수 있나 |
+|---|---|---|---|
+| **P0** | 규칙 | 헌법. "비밀은 절대 노출하지 않는다." 바뀌면 안 된다. | 시스템만 |
+| **P1** | 정체성·페르소나 | 에이전트가 누구인지, 어떻게 말하는지. | 시스템만 |
+| **P2** | 원시 세션 | 일어난 일 전부, 있는 그대로. | 시스템, 게이트웨이, 크론 |
+| **P3** | 툴 연동 | 에이전트가 연결할 수 있는 도구들. | 시스템, 게이트웨이, 크론 |
+| **P4** | 스킬·성장 | 에이전트가 배운 것. | 시스템, 에이전트, 인간 |
+| **P5** | 컴파일된 지식 | 정제된 인사이트 — 가장 먼저 찾는 곳. | 시스템, 에이전트, 툴 |
+| **P6** | 사건·수정 | 무엇이 고장났고, 왜, 무엇으로 고쳤는지. | 시스템, 에이전트, 인간 |
+
+아래 레이어일수록 권위가 높다. P0 규칙은 P1 선호와 충돌해도 협상 없이 이긴다.
+
+### 2. 규칙은 "부탁"이 아니라 시스템이 강제한다
+
+에이전트가 허용되지 않은 레이어에 쓰려고 하면, 그 쓰기는 **오류와 함께 거부**되고 거부 자체가 기록된다. 규칙은 텍스트 파일 속 제안이 아니라, 모든 쓰기 때마다 시스템이 확인하는 권한이다.
+
+### 3. 메모리는 파괴되지 않는다 — 대체될 뿐
+
+이력을 지우는 삭제 버튼은 없다. "잊기"는 항목을 대체된 것으로 표시할 뿐: 검색에서는 사라지지만, 그 기록과 무엇으로 바뀌었는지는 남는다. 메모리에 적용된 버전 관리다.
+
+### 4. 모든 것이 기록에 남는다
+
+감사 로그는 모든 쓰기와 모든 거부된 쓰기를 남긴다: 누가, 어느 레이어에, 언제, 왜. 잘못된 것이 메모리에 들어갔다면, 정확히 어떻게 들어갔는지 볼 수 있고 — 그 이전의 스냅샷으로 돌릴 수도 있다.
+
+### 5. 메모리는 스스로 정리한다
+
+원시 메모는 당분간 괜찮지만 영원히는 아니다. p-layer는 잘 운영되는 조직이 하듯 유지보수를 한다:
+
+- **Consolidation** — 원시 세션 노트 뭉치를 짧은 인사이트로 증류 (지저분한 P2가 쓸모 있는 P5가 된다).
+- **컴파일된 위키** — 활성 지식을 레이어별 깔끔한 페이지로, 출처 이야기와 함께 렌더링.
+- **스냅샷** — 특정 시점의 메모리를 동결하고, 그 시점으로 되돌릴 수 있다.
+- **재임베딩** — 이해 모델이 바뀌어도 배경에서 다시 색인되어 망가지지 않는다.
+
+### 하나의 방법, 두 개의 집
+
+같은 메모리, 같은 규칙이 두 곳에서 돈다:
+
+- **SQLite** — 내 컴퓨터의 파일 하나. 개인 에이전트 한 명에게 완벽하다.
+- **PostgreSQL** — 공유 데이터베이스. 여러 에이전트(또는 사람)가 하나의 메모리를 쓰는 팀·중소기업용.
+
+규칙·레이어·동작은 양쪽에서 동일하고, 같은 테스트 스위트가 둘 다 검증해서 서로 어긋날 수 없다.
+
+---
+
+## 작동 방식 — 하나의 이야기
+
+작은 가게의 결제 시스템을 AI 비서가 관리한다고 하자.
+
+1. **P6 — 사건.** 에이전트가 결제 버그를 발견한다. 사건 보고서를 쓴다: 무슨 일, 타임라인, 최초의 원인 추정.
+2. **P0 — 규칙 확인.** 원인이 규칙 위반으로 드러난다. 에이전트는 규칙 개정을 제안하지만, 실제로 P0를 바꿀 수 있는 건 시스템뿐이다.
+3. **지식 그래프.** 사건은 결제 툴과, 사건이 의존하는 수정 패턴에 연결된다. "이 결제 버그와 관련된 건 뭐지?"는 이제 그 연결을 따라가는 것 — 근본 원인 분석 — 으로 답할 수 있다.
+4. **몇 주 후 — 회상.** 비슷한 증상이 나타난다. 에이전트가 메모리를 검색하면 옛 사건이, 관련성과 확신도에 따라 순위가 매겨져 떠오른다 — 같은 실수를 반복하기 *전에*.
+5. **매일 밤 — consolidation.** 세션의 원시 노트가 오래가는 인사이트로 증류되어 컴파일된 지식에 합쳐진다.
+6. **같은 버그는 두 번 일어나지 않는다** — 에이전트가 더 똑똑해서가 아니라, 메모리의 조직이 기억했기 때문이다.
+
+---
+
+## 증명
+
+같은 테스트 데이터, 두 엔진: 원래의 단순한 방식과 p-layer.
 
 ```
-7 layers. 1 memory. Every write audited.
+같은 데이터, 두 엔진:
+  원래 방식   : 0.667 (2/3)      ← 요청한 것 3개 중 2개만 찾음
+  p-layer     : 1.000 (3/3)      ← 3개 전부 찾음
 ```
 
-[English](./README.md)
+쉽게 말해: 과거 결정을 검색하라는 요청에서, p-layer는 **메모리의 확신도와 신선도**로 순위를 매기기 때문에(단순 단어 매칭이 아니라) 원래 방식이 놓친 것을 전부 찾았다. 그리고 거버넌스는 이론이 아니다 — 30개의 권한 규칙(모든 레이어 × 모든 작성자)이 시스템에 의해 정확히 집행된다.
 
-## 왜 만들었나
+---
 
-P0-P6 "뇌 레이어" 메모리 개념(drewgent, p-layer)은 훌륭하지만, 레퍼런스 구현들은 같은 핵심 결함을 공유한다:
-
-| 결함 | drewgent / p-layer | p-layers |
-|---|---|---|
-| 스키마 관리 | `CREATE TABLE IF NOT EXISTS` 남발, 버전 없음 | forward-only + 체크섬 마이그레이션(`schema_migrations`) |
-| 검색 인덱스 | external-content FTS5 + 트리거(취약, p-layer `forget`은 이를 깨뜨림) | standalone FTS5, 트리거 결합 없음 |
-| 이중 구현 | TS+Python, SQLite+Pg — 드리프트하며 기능 유실 | 단일 구현, 단일 스키마 |
-| 거버넌스 | README 표에만 존재("P0이 이긴다") | **코드로 강제** — 레이어 ACL이 `WriteDenied` 예외 발생 |
-| remember 툴 | layer=P6 하드코딩, 자기 거버넌스를 우회 | 레이어는 쓰기 파라미터, ACL 검사됨 |
-
-이 저장소는 프로덕션급 재건이다: p-layer의 거버넌스 아이디어를 이식하고, 원본에 없던 스키마 규율을 더하고, **거버넌스가 검색 품질을 높인다는 것을 숫자로 증명하는 이벨 하네스**를 갖췄다.
-
-## 기능
-
-| 기능 | 설명 |
-|---|---|
-| **P0-P6 레이어 ACL** | 레이어별 쓰기 주체를 코드로 강제 (P0는 system만 … P6는 agent+manual). 거부된 쓰기도 감사 로그에 기록 |
-| **하이브리드 recall** | FTS5 + 시맨틱(Ollama 또는 플러그형), RRF 퓨전, confidence × freshness 랭킹, 타입 다양화, superseded 제외 |
-| **supersede-not-delete** | forget/update는 항목을 대체. 이력 보존, recall에서는 사라짐 |
-| **스냅샷** | 활성 항목을 버전 라벨로 고정, 롤백 시 이후 항목 일괄 대체 |
-| **감사 로그** | 모든 쓰기 + 모든 거부된 쓰기 기록 — 거버넌스 준수 증거 |
-| **모순 스캔** | LLM 없이 휴리스틱: 규칙 우선순위 충돌, 레이어 간 중복 |
-| **P5 위키 컴파일** | 활성 메모리를 레이어별 마크다운(provenance 포함) + INDEX로 오프라인 컴파일 |
-| **MCP 서버** | 12개 툴, 의존성 0 stdio 구현 — opencode/Claude/Cursor 어디든 |
-| **이식 도구** | `import-drewgent` — 기존 drewgent `knowledge.db`를 스키마 재검증·재임베딩하며 이식 (세션은 episodes로 이관) |
-| **그래프 & 추론** | `graph_explore` / `graph_trace` / `graph_rca`(caused/fixed_by 체인) / `transitive_closure` — drewgent graph_query.py 패리티, 사이클 안전 |
-| **볼트 인제스트** | `import-rules`(rules.md → rules), `import-incidents`(P6 사건 → episodes) — 볼트는 파일로 유지, p-layers가 참조 |
-| **p-layers 호환** | 이 패키지는 PyPI에 **`p-layers`**로 발행된다 (GitHub 레포: p-layers). `p_layer/`가 0.1.x `KnowledgeDB` API와 `knowledge_*` MCP 툴을 이 엔진 위에 노출 — 기존 p-layers 설치가 코드 수정 없이 업그레이드 |
-| **재임베딩 잡** | `reembed` — 모델 전환 후 임베딩 백필. 벡터는 버전관리(이전 버전 유지), recall은 현재 버전만 조회. 멱등 |
-| **Consolidation** | `consolidate` — 미압축 에피소드를 `insight` 다이제스트로 압축(episodic → semantic). 오프라인 결정적 요약 + LLM 훅, 멱등, 감사 기록 |
-| **PostgreSQL 백엔드** | `PgStore` — SQLite `Store`와 동일 인터페이스·거버넌스, 패리티 테스트로 검증 (pg_trgm ILIKE로 CJK, pgvector 시맨틱). 운영 잡은 SQLite 전용, 명시적으로만 |
-
-## 증명: 거버넌스가 검색 품질을 높인다
-
-같은 데이터, 두 엔진, 한 명령어(`p-layer eval suite.json`):
-
-```
-recall@k (same data, two engines):
-  drewgent baseline : 0.667 (2/3)      ← naive FTS OR-join, 삽입 순서
-  p-layer            : 1.000 (3/3)      ← confidence/freshness 랭킹
-  delta             : +0.333
-ACL compliance: 100.0% (30/30) enforcement cases correct
-```
-
-베이스라인은 메타데이터가 없어 움직일 수 없다. p-layers는 거버넌스 메타데이터(confidence, 레이어, supersession)를 검색 품질로 전환하고, ACL 30케이스 전부가 정확히 허가/거부된다.
-
-## 빠른 시작
+## 2분 체험
 
 ```bash
-# 의존성 없음 (Python >= 3.9)
-export P_LAYER_EMBED=hash   # 오프라인 폴백; 기본은 ollama
+pip install p-layers
 export P_LAYER_DB=~/.p_layer/memory.db
+export P_LAYER_EMBED=hash    # 오프라인 모드; 기본은 ollama
 
-python3 -m p_layer init
-python3 -m p_layer remember "switched to portone v2 for payments" --type decision --layer P5
-python3 -m p_layer recall "portone"
-python3 -m p_layer assemble --budget 12000     # 규칙 먼저, 최근 지식 다음
+p-layer remember "결제를 PortOne v2로 바꿨다" --type decision
+p-layer recall "결제"
+p-layer assemble             # 규칙 + 최근 메모리 — 컨텍스트로 바로 사용
 ```
 
-Python API:
+설치할 DB도, 돌릴 서비스도 없다. 메모리는 파일 하나다.
 
-```python
-from p_layer.store import Store, WriteDenied
+## AI 도구와 함께 쓰기
 
-db = Store()
-db.add_knowledge("client prefers weekly sync", type="preference", layer="P6", who="agent")
-print(db.recall("weekly sync", limit=5))
-try:
-    db.add_knowledge("secret", layer="P0", who="agent")   # P0은 system만
-except WriteDenied:
-    pass
-print(db.audit_log(denied_only=True))                     # 거부 기록이 남아 있다
-```
-
-MCP (opencode / Claude Desktop / Cursor):
+에이전트는 표준 연결 방식 **MCP**로 메모리와 대화한다. 도구 설정에 한 블록만 추가하면 에이전트가 기억·회상·감사·스냅샷·근본 원인 추적을 할 수 있다:
 
 ```json
 {
   "mcp": {
-    "p-layers": {
+    "p-layer": {
       "type": "local",
-      "command": ["python3", "-m", "p-layers", "serve"],
+      "command": ["python3", "-m", "p_layer", "serve"],
       "env": { "P_LAYER_DB": "~/.p_layer/memory.db" }
     }
   }
 }
 ```
 
-## 거버넌스 모델
+---
 
-| 레이어 | 목적 | 쓰기 허용 |
-|---|---|---|
-| P0 | 불변 규칙 | system만 |
-| P1 | 정체성 & 페르소나 | system만 |
-| P2 | 원시 세션 아카이브 | system, gateway, cron |
-| P3 | 툴 통합 | system, gateway, cron |
-| P4 | 스킬 & 성장 | system, cron, agent, manual |
-| P5 | 컴파일된 지식 | system, cron, agent, manual, tool |
-| P6 | 사건 & RCA | system, cron, agent, manual, tool |
+## 개발자를 위한 기술 요약
 
-우선순위는 프롬프트가 아니라 데이터다. `assemble()`은 토큰 예산 아래 프리시던스 순서로 규칙을 내보낸다.
-
-## 개발
-
-```bash
-python3 -m unittest discover -s tests -v   # 133개 테스트 (PG 22개는 DSN 없으면 스킵)
-```
-
-## 예제
-
-- `examples/quickstart.py` — API 워크스루
-- `examples/demo_import_eval.sh` — 전체 이주 스토리: drewgent 픽스처(지식+세션+온톨로지+볼트 파일) → 이식 → 볼트 인제스트 → 거버넌스 전후 eval → 감사 → 그래프 → 모순 → 위키
-- `examples/suite.example.json` — eval 스위트 형식
-- `examples/opencode-p-layer.jsonc` — drewgent의 remember/recall 툴을 대체하는 MCP 설정 (복붙용)
-
-## drewgent 메모리를 p-layers로 교체하기
-
-볼트(정체성·페르소나·스킬 파일)는 파일로 유지한다 — 저장소 클래스가 다르며 DB가 되어서는 안 된다. p-layers는 **지식 레이어**를 대체한다:
+- **엔진**: `p_layer.store.Store` — SQLite + FTS5 + 플러그형 임베딩, forward-only 체크섬 마이그레이션. 단일 스키마, 단일 구현.
+- **거버넌스**: P0-P6 레이어 ACL을 쓰기 시점에 강제(`WriteDenied`), supersede-not-delete, 스냅샷/롤백, 전체 감사 로그, 모순 스캔.
+- **회상**: FTS5 + 시맨틱 하이브리드, RRF 퓨전, confidence × freshness 랭킹, superseded 제외, 타입 다양화.
+- **그래프**: 타입이 있는 엔티티/관계 온톨로지 + 제약 검증, explore / trace / 근본 원인 분석 / 전이 폐포 (사이클 안전).
+- **운영 잡**: `reembed`(버전관리 벡터 백필), `consolidate`(episodic → semantic 다이제스트), `compile-wiki`(P5 페이지). SQLite 전용, PostgreSQL에서는 조용히 망가지지 않고 명시적으로 거부.
+- **PostgreSQL**: `p_layer.pgstore.PgStore` — 동일 인터페이스·동작, 공유 패리티 스위트로 검증 (CJK 대응 pg_trgm ILIKE, pgvector 선택).
+- **MCP 서버**: 13개 툴, 의존성 0 stdio 구현, 와이어 레벨 테스트로 엔드투엔드 검증 (CI에서 공식 SDK로도).
+- **이주**: `import-drewgent` — 기존 drewgent `knowledge.db` 이식(스키마 재검증, 세션 보존), `import-rules` / `import-incidents` — 볼트 파일 이식.
+- **테스트**: 138개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징.
+- PyPI: **`p-layers`** · GitHub: **`p-layer`** · 패키지: **`p_layer`** · 콘솔: **`p-layer`**
 
 ```bash
-# 1. 데이터 이주 (지식 + 엔티티 + 관계 + 세션)
-python3 -m p_layer import-drewgent ~/.drewgent/.opencode/knowledge.db --embed ollama
-
-# 2. 볼트 중 스토어에 속하는 것만 인제스트 (선택)
-python3 -m p_layer import-rules ~/.drewgent/@identity/brain/rules.md
-python3 -m p_layer import-incidents ~/.drewgent/P6-prefrontal/incidents
-
-# 3. 에이전트를 MCP 서버로 연결 (examples/opencode-p-layer.jsonc),
-#    AGENTS.md의 툴 지시도 p-layers 기준으로 교체
+python3 -m unittest discover -s tests -v   # 의존성·네트워크 없음
 ```
-
-교체 후 `p-layer eval suite.json`이 증명한다: 같은 데이터, 거버넌스 메타데이터 적용 시 recall@k 0.667 → 1.000, ACL 30/30.
-
-## PostgreSQL 백엔드 (멀티에이전트 / SMB 단계)
-
-`PgStore`는 SQLite `Store` 인터페이스를 그대로 미러링한다 — 같은 메서드, 같은 거버넌스, 양 백엔드에 모든 행동 단언을 실행하는 공유 패리티 스위트로 검증된다.
-
-```python
-from p_layer.pgstore import PgStore
-
-db = PgStore("dbname=memory host=localhost user=me")   # 또는 P_LAYER_PG_DSN
-db.add_knowledge("switched to portone v2", type="decision", layer="P5")
-print(db.recall("portone"))
-```
-
-- **FTS**: `to_tsvector('simple')` + ts_rank, pg_trgm ILIKE 보완(CJK 대응).
-- **시맨틱**: pgvector(`vector(768)`), 선택 사양 — 없으면 FTS-only, `semantic_available: false`로 보고.
-- **안전성**: `statement_timeout` + `connect_timeout` — 락 대기가 멈춤이 아니라 깨끗한 오류로.
-- **운영 경계**: 단일 작성자 유지보수 잡(`reembed`, `consolidate`, `compile-wiki`)은 SQLite에서 실행, Pg에서는 `NotImplementedError`로 명시적 거부 (조용한 성능 저하 없음).
-- **CI**: postgres 서비스 컨테이너로 전체 스위트를 실제 DB에서 실행.
 
 ## 크레딧
 
-
-다음 프로젝트들의 아이디어를 프로덕션급으로 재건한 것입니다:
-
-- [opencode-drewgent](https://github.com/humanerd-drew/opencode-drewgent) — P0-P6 볼트 개념, provenance 규약
-- [p-layer](https://github.com/humanerd-drew/p-layer) — 레이어 권한/ACL 설계, supersede-not-delete, confidence/TTL 랭킹, 스냅샷
-- [Gajae-Code](https://github.com/Yeachan-Heo/gajae-code) — 에이전트 오케스트레이션 관례
-
-이 저장소를 만든 비판적 평가는 README 위쪽에, 좋은 아이디어의 출처는 크레딧에 있습니다.
+[opencode-drewgent](https://github.com/humanerd-drew/opencode-drewgent)의 P0-P6 볼트 개념과 [p-layer](https://github.com/humanerd-drew/p-layer)의 레이어 권한/ACL 설계, [Gajae-Code](https://github.com/Yeachan-Heo/gajae-code)의 오케스트레이션 관례를 프로덕션급으로 재건한 것입니다. 이 프로젝트를 만들게 한 비판적 평가는 위 본문에, 좋은 아이디어의 출처는 이 크레딧에 있습니다.
 
 ## 라이선스
 
