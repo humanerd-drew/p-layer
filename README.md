@@ -38,6 +38,8 @@ This repo is the production-grade rebuild: the governance ideas ported from p-la
 | **Graph & inference** | `graph_explore` / `graph_trace` / `graph_rca` (caused/fixed_by chains) / `transitive_closure` — drewgent graph_query.py parity, cycle-safe traversal. |
 | **Vault ingest** | `import-rules` (rules.md → rules) and `import-incidents` (P6 incidents → episodes) — the vault stays files, memcore references it. |
 | **p-layers 1.0 compat** | `p_layer/` exposes the 0.1.x `KnowledgeDB` API and `knowledge_*` MCP tools over this engine — existing p-layers integrations upgrade without code changes. |
+| **Re-embed job** | `reembed` backfills embeddings after a model switch; vectors are versioned (old versions stay queryable), recall only reads the current version. Idempotent. |
+| **Consolidation** | `consolidate` compresses unconsolidated episodes into `insight` digests — deterministic offline summarizer, pluggable LLM hook, idempotent, audited. |
 
 ## Proof: governance improves retrieval
 
@@ -130,7 +132,7 @@ Precedence is data, not prose: lower priority/higher authority wins, and `assemb
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests -v   # 71 tests, no deps, no network
+python3 -m unittest discover -s tests -v   # 96 tests, no deps, no network
 ```
 
 ## Examples

@@ -561,6 +561,12 @@ class Store:
             "by_type": by_type,
             "by_layer": by_layer,
             "embeddings": count("embeddings"),
+            "embeddings_by_version": {
+                r["embedding_version"]: r["c"]
+                for r in db.execute(
+                    "SELECT embedding_version, COUNT(*) AS c FROM embeddings GROUP BY embedding_version"
+                ).fetchall()
+            },
             "episodes": count("episodes"),
             "entities": count("entities"),
             "relations": count("relations"),
@@ -833,3 +839,118 @@ class Store:
             self.record_episode("incident", {"file": f.name, "content": f.read_text(encoding="utf-8")})
             imported += 1
         return imported
+
+    # ── ops jobs: re-embed & consolidation ────────────────────
+    def reembed(self, batch_size: int = 50, dry_run: bool = False) -> dict:
+        """Re-embed active knowledge under the current embedder's version.
+
+        Vectors are versioned: old versions stay in the table, recall only
+        queries the current one, so a model switch never corrupts search.
+        Idempotent — entries already embedded under the current version are
+        skipped.
+        """
+        emb = self._get_embedder()
+        if emb is None or not emb.available():
+            return {"total": 0, "already": 0, "embedded": 0, "failed": 0,
+                    "reason": "semantic embeddings unavailable"}
+        db = self.db
+        rows = db.execute(
+            "SELECT k.id, k.content FROM knowledge k WHERE k.superseded_by IS NULL ORDER BY k.id"
+        ).fetchall()
+        have = {
+            r["knowledge_id"]
+            for r in db.execute(
+                "SELECT knowledge_id FROM embeddings WHERE embedding_version = ?",
+                (emb.embedding_version,),
+            ).fetchall()
+        }
+        todo = [dict(r) for r in rows if r["id"] not in have]
+        already = len(rows) - len(todo)
+        embedded = 0
+        failed = 0
+        if not dry_run:
+            for start in range(0, len(todo), batch_size):
+                batch = todo[start:start + batch_size]
+                try:
+                    vecs = emb.embed([b["content"][:2000] for b in batch])
+                except EmbeddingError:
+                    failed += len(batch)
+                    continue
+                for b, vec in zip(batch, vecs):
+                    db.execute(
+                        "INSERT OR REPLACE INTO embeddings "
+                        "(knowledge_id, model, embedding_version, dimensions, vector, created_at) "
+                        "VALUES (?,?,?,?,?,?)",
+                        (b["id"], emb.model, emb.embedding_version, emb.dimensions, _vec_to_blob(vec), utcnow()),
+                    )
+                    embedded += 1
+            db.commit()
+        return {"total": len(rows), "already": already, "embedded": embedded,
+                "failed": failed, "dry_run": dry_run}
+
+    def consolidate(self, min_episodes: int = 3, summarizer=None, dry_run: bool = False) -> dict:
+        """Compress unconsolidated episodes into semantic-memory digests.
+
+        Groups unconsolidated episodes by session (or kind), and writes one
+        `insight` entry per group of `min_episodes` or more. The default
+        summarizer is deterministic and offline; pass a callable
+        summarizer(texts, group_key) -> str for an LLM digest. Idempotent:
+        consolidated episodes are marked and never re-processed.
+        """
+        db = self.db
+        rows = db.execute(
+            "SELECT id, session_id, kind, payload FROM episodes "
+            "WHERE consolidated_at IS NULL ORDER BY id"
+        ).fetchall()
+        groups: dict[str, list[dict]] = defaultdict(list)
+        for r in rows:
+            key = r["session_id"] or f"unattributed:{r['kind']}"
+            groups[key].append(dict(r))
+
+        digests = 0
+        covered = 0
+        skipped = 0
+        for key, eps in sorted(groups.items()):
+            if len(eps) < min_episodes:
+                skipped += len(eps)
+                continue
+            texts = []
+            for e in eps:
+                raw = e["payload"]
+                try:
+                    payload = json.loads(raw) if raw.startswith("{") else raw
+                except json.JSONDecodeError:
+                    payload = raw
+                if isinstance(payload, dict):
+                    texts.append(
+                        payload.get("title") or payload.get("file")
+                        or payload.get("content") or json.dumps(payload, ensure_ascii=False)
+                    )
+                else:
+                    texts.append(str(payload))
+            if summarizer is not None:
+                digest = summarizer(texts, key)
+            else:
+                unique = list(dict.fromkeys(texts))
+                digest = f"[consolidated] {len(eps)} episode(s) [{key}]: " + " | ".join(unique[:4])[:500]
+            if not dry_run:
+                kid = self.add_knowledge(
+                    digest,
+                    type="insight",
+                    layer="P5",
+                    who="system:consolidation",
+                    source=f"consolidation:{key}",
+                    confidence=0.7,
+                )
+                marks = ",".join("?" for _ in eps)
+                db.execute(
+                    f"UPDATE episodes SET consolidated_at = ? WHERE id IN ({marks})",
+                    (utcnow(), *[e["id"] for e in eps]),
+                )
+                db.commit()
+                self._audit("consolidate", knowledge_id=kid, layer="P5", who="system:consolidation",
+                            detail=f"group={key} episodes={len(eps)}")
+                db.commit()
+            digests += 1
+            covered += len(eps)
+        return {"digests": digests, "episodes_covered": covered, "skipped": skipped, "dry_run": dry_run}

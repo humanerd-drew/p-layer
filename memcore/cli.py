@@ -98,6 +98,13 @@ def build_parser() -> argparse.ArgumentParser:
     ii = sub.add_parser("import-incidents", help="import P6 incidents markdown dir into episodes")
     ii.add_argument("path")
 
+    re = sub.add_parser("reembed", help="re-embed active knowledge under the current embedding version")
+    re.add_argument("--dry-run", action="store_true")
+
+    co = sub.add_parser("consolidate", help="compress unconsolidated episodes into knowledge digests")
+    co.add_argument("--min-episodes", type=int, default=3)
+    co.add_argument("--dry-run", action="store_true")
+
     sn = sub.add_parser("snapshot", help="snapshot create/rollback")
     sn_sub = sn.add_subparsers(dest="snapshot_cmd", required=True)
     sc = sn_sub.add_parser("create")
@@ -220,6 +227,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "import-incidents":
         n = store.import_incidents_dir(args.path)
         print(f"✓ imported {n} incident(s)")
+        return 0
+
+    if args.cmd == "reembed":
+        print(json.dumps(store.reembed(dry_run=args.dry_run), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.cmd == "consolidate":
+        print(json.dumps(store.consolidate(min_episodes=args.min_episodes, dry_run=args.dry_run),
+                         ensure_ascii=False, indent=2))
         return 0
 
     if args.cmd == "compile-wiki":

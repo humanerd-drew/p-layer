@@ -137,6 +137,13 @@ CREATE INDEX idx_audit_knowledge ON audit_log(knowledge_id);
 CREATE INDEX idx_audit_denied ON audit_log(denied);
 """,
 )
+_register(
+    4,
+    "consolidation",
+    """
+ALTER TABLE episodes ADD COLUMN consolidated_at TEXT;
+""",
+)
 
 
 def _utcnow() -> str:

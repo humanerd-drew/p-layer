@@ -15,7 +15,7 @@ import sys
 from .store import KNOWLEDGE_TYPES, Store
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "memcore", "version": "0.4.0"}
+SERVER_INFO = {"name": "memcore", "version": "0.5.0"}
 
 TOOLS = [
     {
@@ -156,6 +156,14 @@ TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "consolidate",
+        "description": "Compress unconsolidated episodes into knowledge digests (episodic -> semantic).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"min_episodes": {"type": "number", "default": 3}},
+        },
+    },
 ]
 
 
@@ -242,6 +250,9 @@ def _call_tool(name: str, arguments: dict, store: Store) -> str:
                           ensure_ascii=False, indent=2)
     if name == "graph_rca":
         return json.dumps(store.graph_rca(arguments.get("query", ""), depth=int(arguments.get("depth", 3))),
+                          ensure_ascii=False, indent=2)
+    if name == "consolidate":
+        return json.dumps(store.consolidate(min_episodes=int(arguments.get("min_episodes", 3))),
                           ensure_ascii=False, indent=2)
     raise ValueError(f"unknown tool: {name}")
 

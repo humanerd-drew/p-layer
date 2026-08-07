@@ -80,7 +80,7 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(stats["knowledge"], 2)
         self.assertEqual(stats["by_type"], {"fact": 1, "decision": 1})
         self.assertEqual(stats["embeddings"], 2)  # HashEmbedder ran
-        self.assertEqual(stats["schema_version"], 3)
+        self.assertEqual(stats["schema_version"], 4)
 
     def test_assemble_includes_recent_knowledge(self):
         s = self._store()

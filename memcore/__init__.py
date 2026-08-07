@@ -16,7 +16,7 @@ The eval harness proves the thesis: recall@k vs the drewgent baseline, plus
 ACL compliance, in one command (`memcore eval suite.json`).
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from .store import (
     Store,

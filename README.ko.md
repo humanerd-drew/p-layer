@@ -38,6 +38,8 @@ P0-P6 "뇌 레이어" 메모리 개념(drewgent, p-layer)은 훌륭하지만, �
 | **그래프 & 추론** | `graph_explore` / `graph_trace` / `graph_rca`(caused/fixed_by 체인) / `transitive_closure` — drewgent graph_query.py 패리티, 사이클 안전 |
 | **볼트 인제스트** | `import-rules`(rules.md → rules), `import-incidents`(P6 사건 → episodes) — 볼트는 파일로 유지, memcore가 참조 |
 | **p-layers 1.0 호환** | `p_layer/`가 0.1.x `KnowledgeDB` API와 `knowledge_*` MCP 툴을 이 엔진 위에 노출 — 기존 p-layers 설치가 코드 수정 없이 업그레이드 |
+| **재임베딩 잡** | `reembed` — 모델 전환 후 임베딩 백필. 벡터는 버전관리(이전 버전 유지), recall은 현재 버전만 조회. 멱등 |
+| **Consolidation** | `consolidate` — 미압축 에피소드를 `insight` 다이제스트로 압축(episodic → semantic). 오프라인 결정적 요약 + LLM 훅, 멱등, 감사 기록 |
 
 ## 증명: 거버넌스가 검색 품질을 높인다
 
@@ -112,7 +114,7 @@ MCP (opencode / Claude Desktop / Cursor):
 ## 개발
 
 ```bash
-python3 -m unittest discover -s tests -v   # 71개 테스트, 의존성·네트워크 없음
+python3 -m unittest discover -s tests -v   # 96개 테스트, 의존성·네트워크 없음
 ```
 
 ## 예제
