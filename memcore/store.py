@@ -488,6 +488,7 @@ class Store:
                     "content": row["content"],
                     "source": row["source"],
                     "layer": row["layer"],
+                    "who": row["who"],
                     "confidence": row["confidence"],
                     "created_at": row["created_at"],
                     "score": round(final, 4),
