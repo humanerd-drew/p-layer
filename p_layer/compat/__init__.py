@@ -6,7 +6,7 @@ existing integrations upgrade without code changes. The engine underneath is
 P0-P6 governance, hybrid recall, supersede-not-delete, snapshots, audit.
 """
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 from .db import KnowledgeDB, WriteDenied
 
