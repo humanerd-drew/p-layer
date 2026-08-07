@@ -40,6 +40,7 @@ P0-P6 "뇌 레이어" 메모리 개념(drewgent, p-layer)은 훌륭하지만, �
 | **p-layers 1.0 호환** | `p_layer/`가 0.1.x `KnowledgeDB` API와 `knowledge_*` MCP 툴을 이 엔진 위에 노출 — 기존 p-layers 설치가 코드 수정 없이 업그레이드 |
 | **재임베딩 잡** | `reembed` — 모델 전환 후 임베딩 백필. 벡터는 버전관리(이전 버전 유지), recall은 현재 버전만 조회. 멱등 |
 | **Consolidation** | `consolidate` — 미압축 에피소드를 `insight` 다이제스트로 압축(episodic → semantic). 오프라인 결정적 요약 + LLM 훅, 멱등, 감사 기록 |
+| **PostgreSQL 백엔드** | `PgStore` — SQLite `Store`와 동일 인터페이스·거버넌스, 패리티 테스트로 검증 (pg_trgm ILIKE로 CJK, pgvector 시맨틱). 운영 잡은 SQLite 전용, 명시적으로만 |
 
 ## 증명: 거버넌스가 검색 품질을 높인다
 
@@ -114,7 +115,7 @@ MCP (opencode / Claude Desktop / Cursor):
 ## 개발
 
 ```bash
-python3 -m unittest discover -s tests -v   # 96개 테스트, 의존성·네트워크 없음
+python3 -m unittest discover -s tests -v   # 133개 테스트 (PG 22개는 DSN 없으면 스킵)
 ```
 
 ## 예제
@@ -142,7 +143,26 @@ python3 -m memcore import-incidents ~/.drewgent/P6-prefrontal/incidents
 
 교체 후 `memcore eval suite.json`이 증명한다: 같은 데이터, 거버넌스 메타데이터 적용 시 recall@k 0.667 → 1.000, ACL 30/30.
 
+## PostgreSQL 백엔드 (멀티에이전트 / SMB 단계)
+
+`PgStore`는 SQLite `Store` 인터페이스를 그대로 미러링한다 — 같은 메서드, 같은 거버넌스, 양 백엔드에 모든 행동 단언을 실행하는 공유 패리티 스위트로 검증된다.
+
+```python
+from memcore.pgstore import PgStore
+
+db = PgStore("dbname=memory host=localhost user=me")   # 또는 MEMCORE_PG_DSN
+db.add_knowledge("switched to portone v2", type="decision", layer="P5")
+print(db.recall("portone"))
+```
+
+- **FTS**: `to_tsvector('simple')` + ts_rank, pg_trgm ILIKE 보완(CJK 대응).
+- **시맨틱**: pgvector(`vector(768)`), 선택 사양 — 없으면 FTS-only, `semantic_available: false`로 보고.
+- **안전성**: `statement_timeout` + `connect_timeout` — 락 대기가 멈춤이 아니라 깨끗한 오류로.
+- **운영 경계**: 단일 작성자 유지보수 잡(`reembed`, `consolidate`, `compile-wiki`)은 SQLite에서 실행, Pg에서는 `NotImplementedError`로 명시적 거부 (조용한 성능 저하 없음).
+- **CI**: postgres 서비스 컨테이너로 전체 스위트를 실제 DB에서 실행.
+
 ## 크레딧
+
 
 다음 프로젝트들의 아이디어를 프로덕션급으로 재건한 것입니다:
 

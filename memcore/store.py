@@ -109,6 +109,128 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
+def _freshness(row: dict) -> float:
+    ttl = row.get("ttl_days")
+    if not ttl:
+        return 1.0
+    return 1.0 + 0.3 * max(0.0, 1.0 - _age_days(row["created_at"]) / ttl)
+
+
+def rrf_fuse(fts: list[dict], sem: list[tuple[float, int]], limit: int,
+             row_lookup) -> list[dict]:
+    """Backend-agnostic RRF fusion: ranks FTS rows and semantic scores,
+    boosts by confidence and freshness, diversifies 3-per-type. `row_lookup`
+    maps knowledge ids to row dicts (superseded rows are excluded by it)."""
+    k = 60
+    scores: dict[int, dict] = {}
+    for rank, row in enumerate(fts, start=1):
+        entry = scores.setdefault(row["id"], {"row": row, "rrf": 0.0, "sem": None})
+        entry["rrf"] += 1.0 / (k + rank)
+    for rank, (sim, kid) in enumerate(sem, start=1):
+        entry = scores.setdefault(kid, {"row": None, "rrf": 0.0, "sem": sim})
+        entry["rrf"] += 1.0 / (k + rank)
+        if entry["row"] is None:
+            entry["row"] = row_lookup([kid]).get(kid)
+    candidates = [e for e in scores.values() if e["row"] is not None]
+    if not candidates:
+        return []
+    ordered = sorted(
+        candidates,
+        key=lambda e: e["rrf"] * (0.5 + 0.5 * e["row"]["confidence"]) * _freshness(e["row"]),
+        reverse=True,
+    )
+    seen: dict[str, int] = {}
+    out: list[dict] = []
+    for entry in ordered:
+        row = entry["row"]
+        t = row["type"]
+        if seen.get(t, 0) >= 3:  # diversify: cap 3 per type
+            continue
+        seen[t] = seen.get(t, 0) + 1
+        final = entry["rrf"] * (0.5 + 0.5 * row["confidence"]) * _freshness(row)
+        out.append(
+            {
+                "id": row["id"],
+                "type": row["type"],
+                "content": row["content"],
+                "source": row["source"],
+                "layer": row["layer"],
+                "who": row["who"],
+                "confidence": row["confidence"],
+                "created_at": row["created_at"],
+                "score": round(final, 4),
+                "rrf": round(entry["rrf"], 4),
+                "semantic_score": entry["sem"],
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _norm_tokens(text: str) -> set[str]:
+    words = re.findall(r"[a-z0-9가-힣]+", text.lower())
+    stop = {"the", "a", "an", "of", "to", "and", "or", "for", "with", "on",
+            "in", "is", "are", "was", "were", "be", "it", "this", "that"}
+    return {w for w in words if w not in stop and len(w) > 1}
+
+
+def _token_overlap(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
+
+
+def scan_contradictions(rules: list[dict], knowledge_rows: list[dict]) -> list[dict]:
+    """Backend-agnostic governance-contradiction scan (no LLM)."""
+    out: list[dict] = []
+    for i in range(len(rules)):
+        for j in range(i + 1, len(rules)):
+            r1, r2 = rules[i], rules[j]
+            if r1["priority"] == r2["priority"]:
+                continue
+            if _token_overlap(_norm_tokens(r1["text"]), _norm_tokens(r2["text"])) >= 0.8:
+                out.append({
+                    "kind": "conflicting_rules",
+                    "severity": "high",
+                    "a": {"id": r1["id"], "layer": r1["layer"], "priority": r1["priority"], "text": r1["text"]},
+                    "b": {"id": r2["id"], "layer": r2["layer"], "priority": r2["priority"], "text": r2["text"]},
+                })
+    for i in range(len(knowledge_rows)):
+        for j in range(i + 1, len(knowledge_rows)):
+            a, b = knowledge_rows[i], knowledge_rows[j]
+            if a["layer"] == b["layer"]:
+                continue
+            if _token_overlap(_norm_tokens(a["content"]), _norm_tokens(b["content"])) >= 0.8:
+                out.append({
+                    "kind": "cross_layer_duplicate",
+                    "severity": "medium",
+                    "a": {"id": a["id"], "layer": a["layer"], "content": a["content"]},
+                    "b": {"id": b["id"], "layer": b["layer"], "content": b["content"]},
+                })
+    return out
+
+
+def compose_assemble(rules: list[dict], recent: list[dict], budget_chars: int = 12000) -> str:
+    """Backend-agnostic budget-bounded context assembly: rules (priority
+    order) first, then recent knowledge. Never emits partial items."""
+    parts: list[str] = []
+    used = 0
+    for r in rules:
+        text = f"[{r['layer']}] {r['text']}"
+        if used + len(text) > budget_chars:
+            break
+        parts.append(text)
+        used += len(text)
+    for k in recent:
+        text = f"[{k['layer']}][{k['type']}] {k['content']}"
+        if used + len(text) > budget_chars:
+            break
+        parts.append(text)
+        used += len(text)
+    return "\n\n".join(parts)
+
+
 
 
 class Store:
@@ -437,10 +559,7 @@ class Store:
 
     @staticmethod
     def _freshness(row: dict) -> float:
-        ttl = row.get("ttl_days")
-        if not ttl:
-            return 1.0
-        return 1.0 + 0.3 * max(0.0, 1.0 - _age_days(row["created_at"]) / ttl)
+        return _freshness(row)
 
     def _serendipity_pick(self, exclude: list[int]) -> dict | None:
         marks = ",".join("?" for _ in exclude)
@@ -454,51 +573,7 @@ class Store:
         return dict(row) | {"score": None, "semantic_score": None, "_serendipity": True}
 
     def _rrf_fuse(self, fts: list[dict], sem: list[tuple[float, int]], limit: int) -> list[dict]:
-        k = 60
-        scores: dict[int, dict] = {}
-        for rank, row in enumerate(fts, start=1):
-            entry = scores.setdefault(row["id"], {"row": row, "rrf": 0.0, "sem": None})
-            entry["rrf"] += 1.0 / (k + rank)
-        for rank, (sim, kid) in enumerate(sem, start=1):
-            entry = scores.setdefault(kid, {"row": None, "rrf": 0.0, "sem": sim})
-            entry["rrf"] += 1.0 / (k + rank)
-            if entry["row"] is None:
-                entry["row"] = self._rows_by_ids([kid]).get(kid)
-        candidates = [e for e in scores.values() if e["row"] is not None]
-        if not candidates:
-            return []
-        ordered = sorted(
-            candidates,
-            key=lambda e: e["rrf"] * (0.5 + 0.5 * e["row"]["confidence"]) * self._freshness(e["row"]),
-            reverse=True,
-        )
-        seen: dict[str, int] = {}
-        out: list[dict] = []
-        for entry in ordered:
-            row = entry["row"]
-            t = row["type"]
-            if seen.get(t, 0) >= 3:  # diversify: cap 3 per type
-                continue
-            seen[t] = seen.get(t, 0) + 1
-            final = entry["rrf"] * (0.5 + 0.5 * row["confidence"]) * self._freshness(row)
-            out.append(
-                {
-                    "id": row["id"],
-                    "type": row["type"],
-                    "content": row["content"],
-                    "source": row["source"],
-                    "layer": row["layer"],
-                    "who": row["who"],
-                    "confidence": row["confidence"],
-                    "created_at": row["created_at"],
-                    "score": round(final, 4),
-                    "rrf": round(entry["rrf"], 4),
-                    "semantic_score": entry["sem"],
-                }
-            )
-            if len(out) >= limit:
-                break
-        return out
+        return rrf_fuse(fts, sem, limit, self._rows_by_ids)
 
     def enabled_rules(self, limit: int = 100) -> list[dict]:
         rows = self.db.execute(
@@ -517,28 +592,10 @@ class Store:
         return [dict(r) for r in rows]
 
     def assemble(self, budget_chars: int = 12000, include: tuple[str, ...] = ("rules", "recent")) -> str:
-        """Deterministic, budget-bounded context assembly.
-
-        Rules (canonical, priority-ordered) first, then recent knowledge.
-        Never emits partial items — a full item that doesn't fit is dropped.
-        """
-        parts: list[str] = []
-        used = 0
-        if "rules" in include:
-            for r in self.enabled_rules():
-                text = f"[{r['layer']}] {r['text']}"
-                if used + len(text) > budget_chars:
-                    break
-                parts.append(text)
-                used += len(text)
-        if "recent" in include:
-            for k in self.recent_knowledge(limit=50):
-                text = f"[{k['layer']}][{k['type']}] {k['content']}"
-                if used + len(text) > budget_chars:
-                    break
-                parts.append(text)
-                used += len(text)
-        return "\n\n".join(parts)
+        """Deterministic, budget-bounded context assembly (see compose_assemble)."""
+        rules = self.enabled_rules() if "rules" in include else []
+        recent = self.recent_knowledge(limit=50) if "recent" in include else []
+        return compose_assemble(rules, recent, budget_chars)
 
     def stats(self) -> dict:
         db = self.db
@@ -596,50 +653,10 @@ class Store:
         2. active knowledge near-duplicates living in different layers —
            a layer-boundary smell (same fact, two authorities).
         """
-        db = self.db
-        out: list[dict] = []
-
-        def norm(text: str) -> set[str]:
-            words = re.findall(r"[a-z0-9가-힣]+", text.lower())
-            stop = {"the", "a", "an", "of", "to", "and", "or", "for", "with", "on",
-                    "in", "is", "are", "was", "were", "be", "it", "this", "that"}
-            return {w for w in words if w not in stop and len(w) > 1}
-
-        def overlap(a: set[str], b: set[str]) -> float:
-            if not a or not b:
-                return 0.0
-            return len(a & b) / min(len(a), len(b))
-
-        rules = self.enabled_rules(limit=500)
-        for i in range(len(rules)):
-            for j in range(i + 1, len(rules)):
-                r1, r2 = rules[i], rules[j]
-                if r1["priority"] == r2["priority"]:
-                    continue
-                if overlap(norm(r1["text"]), norm(r2["text"])) >= 0.8:
-                    out.append({
-                        "kind": "conflicting_rules",
-                        "severity": "high",
-                        "a": {"id": r1["id"], "layer": r1["layer"], "priority": r1["priority"], "text": r1["text"]},
-                        "b": {"id": r2["id"], "layer": r2["layer"], "priority": r2["priority"], "text": r2["text"]},
-                    })
-
-        rows = db.execute(
-            f"SELECT id, layer, type, content FROM knowledge k WHERE k.superseded_by IS NULL"
-        ).fetchall()
-        for i in range(len(rows)):
-            for j in range(i + 1, len(rows)):
-                a, b = rows[i], rows[j]
-                if a["layer"] == b["layer"]:
-                    continue
-                if overlap(norm(a["content"]), norm(b["content"])) >= 0.8:
-                    out.append({
-                        "kind": "cross_layer_duplicate",
-                        "severity": "medium",
-                        "a": {"id": a["id"], "layer": a["layer"], "content": a["content"]},
-                        "b": {"id": b["id"], "layer": b["layer"], "content": b["content"]},
-                    })
-        return out
+        return scan_contradictions(self.enabled_rules(limit=500),
+                                   [dict(r) for r in self.db.execute(
+                                       "SELECT id, layer, type, content FROM knowledge k WHERE k.superseded_by IS NULL"
+                                   ).fetchall()])
 
     def compile_wiki(self, out_dir: str | Path) -> dict:
         """Compile active memory into the P5 wiki: per-layer markdown pages

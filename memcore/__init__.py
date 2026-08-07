@@ -16,7 +16,7 @@ The eval harness proves the thesis: recall@k vs the drewgent baseline, plus
 ACL compliance, in one command (`memcore eval suite.json`).
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 from .store import (
     Store,
@@ -29,9 +29,11 @@ from .store import (
 from .migrations import migrate, MIGRATIONS
 from .embed import Embedder, OllamaEmbedder, HashEmbedder, NoopEmbedder, load_embedder
 from .eval import acl_compliance, load_suite, recall_at_k, run_eval
+from .pgstore import PgStore
 
 __all__ = [
     "Store",
+    "PgStore",
     "KNOWLEDGE_TYPES",
     "LAYER_AUTHORITY",
     "LAYER_WRITERS",

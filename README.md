@@ -40,6 +40,7 @@ This repo is the production-grade rebuild: the governance ideas ported from p-la
 | **p-layers 1.0 compat** | `p_layer/` exposes the 0.1.x `KnowledgeDB` API and `knowledge_*` MCP tools over this engine — existing p-layers integrations upgrade without code changes. |
 | **Re-embed job** | `reembed` backfills embeddings after a model switch; vectors are versioned (old versions stay queryable), recall only reads the current version. Idempotent. |
 | **Consolidation** | `consolidate` compresses unconsolidated episodes into `insight` digests — deterministic offline summarizer, pluggable LLM hook, idempotent, audited. |
+| **PostgreSQL backend** | `PgStore` — the same interface, governance, and parity-tested behavior on Postgres (pg_trgm ILIKE for CJK, pgvector semantic). Ops jobs stay SQLite-only, loudly. |
 
 ## Proof: governance improves retrieval
 
@@ -132,7 +133,7 @@ Precedence is data, not prose: lower priority/higher authority wins, and `assemb
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests -v   # 96 tests, no deps, no network
+python3 -m unittest discover -s tests -v   # 133 tests (22 PG tests skip without a DSN)
 ```
 
 ## Examples
@@ -160,7 +161,26 @@ python3 -m memcore import-incidents ~/.drewgent/P6-prefrontal/incidents
 
 Then `memcore eval suite.json` proves the swap: same data, recall@k 0.667 → 1.000 with governance metadata, ACL 30/30.
 
+## PostgreSQL backend (multi-agent / SMB phase)
+
+`PgStore` mirrors the SQLite `Store` interface — same methods, same governance, verified by a shared parity suite that runs every behavioral assertion against both backends.
+
+```python
+from memcore.pgstore import PgStore
+
+db = PgStore("dbname=memory host=localhost user=me")   # or MEMCORE_PG_DSN
+db.add_knowledge("switched to portone v2", type="decision", layer="P5")
+print(db.recall("portone"))
+```
+
+- **FTS**: `to_tsvector('simple')` + ts_rank, complemented by a pg_trgm ILIKE search (CJK-friendly).
+- **Semantic**: pgvector (`vector(768)`), optional — without it the store is FTS-only and reports `semantic_available: false`.
+- **Safety**: `statement_timeout` + `connect_timeout` — lock waits become clean errors, never hangs.
+- **Ops boundary**: single-writer maintenance jobs (`reembed`, `consolidate`, `compile-wiki`) run on the SQLite store; on Pg they raise `NotImplementedError` loudly instead of silently degrading.
+- **CI**: a postgres service container runs the full suite against a real database in CI.
+
 ## Credits
+
 
 Built as a production-grade rebuild of ideas from:
 
