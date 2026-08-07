@@ -1,2 +1,29 @@
+# memcore — the repo root is a shared scratch workspace, so ignore everything
+# and whitelist only the project. Nothing else in this directory gets tracked.
+
 *
+!memcore/
+!memcore/**
+!tests/
+!tests/**
+!examples/
+!examples/**
+!.github/
+!.github/**
+!pyproject.toml
+!README.md
+!README.ko.md
+!LICENSE
 !.gitignore
+
+# Python junk inside the project
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.knowledge/
+*.db
+*.db-wal
+*.db-shm
