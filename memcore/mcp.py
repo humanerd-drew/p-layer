@@ -15,7 +15,7 @@ import sys
 from .store import KNOWLEDGE_TYPES, Store
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "memcore", "version": "0.3.0"}
+SERVER_INFO = {"name": "memcore", "version": "0.4.0"}
 
 TOOLS = [
     {
@@ -120,6 +120,42 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "graph_explore",
+        "description": "Find entities by label and show outbound neighbor relations.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "depth": {"type": "number", "default": 2},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "graph_trace",
+        "description": "Trace an entity's inbound and outbound relation paths.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "depth": {"type": "number", "default": 4},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "graph_rca",
+        "description": "Root-cause analysis: incidents/patterns with caused/fixed_by chains.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "depth": {"type": "number", "default": 3},
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -198,6 +234,15 @@ def _call_tool(name: str, arguments: dict, store: Store) -> str:
             for e in entries
         ]
         return "\n".join(lines)
+    if name == "graph_explore":
+        return json.dumps(store.graph_explore(arguments.get("query", ""), depth=int(arguments.get("depth", 2))),
+                          ensure_ascii=False, indent=2)
+    if name == "graph_trace":
+        return json.dumps(store.graph_trace(arguments.get("query", ""), depth=int(arguments.get("depth", 4))),
+                          ensure_ascii=False, indent=2)
+    if name == "graph_rca":
+        return json.dumps(store.graph_rca(arguments.get("query", ""), depth=int(arguments.get("depth", 3))),
+                          ensure_ascii=False, indent=2)
     raise ValueError(f"unknown tool: {name}")
 
 

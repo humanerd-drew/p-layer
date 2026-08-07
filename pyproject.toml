@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memcore"
-version = "0.3.0"
+version = "0.4.0"
 description = "Production-grade agent memory layer — SQLite + FTS5 + pluggable embeddings, stdlib-only"
 requires-python = ">=3.9"
 license = { text = "MIT" }

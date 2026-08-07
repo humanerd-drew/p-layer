@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# memcore proof pipeline — same data, two engines, one story.
+# memcore proof pipeline — the full drewgent -> memcore migration story.
 #
-#   1. builds a drewgent-style knowledge.db fixture
-#   2. imports it into memcore (import-drewgent)
-#   3. evals recall@k BEFORE governance (flat import) vs AFTER (confidence metadata)
-#   4. shows a denied write landing in the audit log
-#   5. scans contradictions and compiles the P5 wiki
+#   1. builds a drewgent-style workspace fixture (knowledge.db WITH sessions,
+#      entities, relations, plus vault files: rules.md and P6 incidents)
+#   2. imports it (import-drewgent now carries sessions too)
+#   3. ingests the vault: import-rules, import-incidents
+#   4. evals recall@k BEFORE governance vs AFTER (confidence metadata)
+#   5. shows a denied write landing in the audit log
+#   6. runs graph explore/trace/rca + transitive closure
+#   7. scans contradictions and compiles the P5 wiki
 #
 # Run:  bash examples/demo_import_eval.sh
 set -euo pipefail
@@ -15,6 +18,8 @@ SRC="$WORK/drewgent.db"
 DST="$WORK/memory.db"
 SUITE="$WORK/suite.json"
 WIKI="$WORK/wiki"
+RULES="$WORK/vault/P0-brainstem/rules.md"
+INCIDENTS="$WORK/vault/P6-prefrontal/incidents"
 
 python3 - "$SRC" <<'PY'
 import sqlite3, sys
@@ -23,6 +28,12 @@ db.executescript("""
 CREATE TABLE knowledge (id INTEGER PRIMARY KEY AUTOINCREMENT,
     type TEXT NOT NULL DEFAULT 'fact', content TEXT NOT NULL,
     source TEXT, created_at TEXT);
+CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, created_at TEXT, message_count INTEGER DEFAULT 0);
+CREATE TABLE entities (id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL, type TEXT NOT NULL, type_parent TEXT, properties TEXT DEFAULT '{}');
+CREATE TABLE relations (id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL, target_id INTEGER NOT NULL,
+    type TEXT NOT NULL, properties TEXT DEFAULT '{}');
 """)
 rows = [
     ("decision",  "switched to portone v2 for payments", "session: 2026-08-07"),
@@ -33,20 +44,45 @@ rows = [
 ]
 for t, c, s in rows:
     db.execute("INSERT INTO knowledge (type, content, source, created_at) VALUES (?,?,?,datetime('now'))", (t, c, s))
+db.execute("INSERT INTO sessions (id, title, message_count) VALUES ('s1','2026-08-07 payments', 12)")
+db.execute("INSERT INTO entities (label, type) VALUES ('portone','tool')")
+db.execute("INSERT INTO entities (label, type) VALUES ('deploy-failed','incident')")
+db.execute("INSERT INTO entities (label, type) VALUES ('retry-policy','pattern')")
+db.execute("INSERT INTO relations (source_id, target_id, type) VALUES (2,1,'references')")
+db.execute("INSERT INTO relations (source_id, target_id, type) VALUES (2,3,'fixed_by')")
+db.execute("INSERT INTO relations (source_id, target_id, type) VALUES (3,1,'depends_on')")
 db.commit()
 db.close()
 PY
+
+mkdir -p "$(dirname "$RULES")" "$INCIDENTS"
+cat > "$RULES" <<'MD'
+# Brain Rules
+## [P0] never expose secrets in logs
+priority: 10
+scope: all
+## [P1] be concise in responses
+MD
+cat > "$INCIDENTS/2026-08-01-deploy.md" <<'MD'
+# deploy failed
+root cause: payment gateway retry raced the webhook deadline
+MD
 
 cp examples/suite.example.json "$SUITE"
 
 export MEMCORE_EMBED=hash
 export MEMCORE_DB="$DST"
 
-echo "== import drewgent fixture =="
+echo "== 1. import drewgent workspace (knowledge + sessions + ontology) =="
 python3 -m memcore import-drewgent "$SRC" --no-embed
 
 echo
-echo "== BEFORE governance: imported flat, all confidence 1.0 =="
+echo "== 2. ingest the vault (rules.md -> rules, incidents -> episodes) =="
+python3 -m memcore import-rules "$RULES"
+python3 -m memcore import-incidents "$INCIDENTS"
+
+echo
+echo "== 3. BEFORE governance: imported flat, all confidence 1.0 =="
 python3 -m memcore eval "$SUITE"
 
 echo
@@ -58,17 +94,22 @@ echo "== AFTER governance: confidence-ranked =="
 python3 -m memcore eval "$SUITE"
 
 echo
-echo "== denied write is on the record =="
+echo "== 4. denied write is on the record =="
 python3 -m memcore remember "rotate the api key weekly" --layer P0 --who agent 2>/dev/null || echo "(denied, exit=$?)"
 python3 -m memcore audit --denied-only
 
 echo
-echo "== contradictions =="
-python3 -m memcore rules add "never expose secrets in logs" --priority 10 >/dev/null
-python3 -m memcore rules add "never expose secrets" --priority 100 >/dev/null
+echo "== 5. graph: explore / trace / rca / closure =="
+python3 -m memcore graph explore "portone"
+python3 -m memcore graph rca "deploy-failed"
+python3 -m memcore graph closure 3 --rel depends_on
+
+echo
+echo "== 6. contradictions =="
+python3 -m memcore rules add "never expose secrets in logs" --priority 100 >/dev/null
 python3 -m memcore contradictions || true
 
 echo
-echo "== P5 wiki =="
+echo "== 7. P5 wiki =="
 python3 -m memcore compile-wiki "$WIKI" >/dev/null
 find "$WIKI" -type f -name "*.md" | sort

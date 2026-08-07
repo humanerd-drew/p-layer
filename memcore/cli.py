@@ -71,6 +71,33 @@ def build_parser() -> argparse.ArgumentParser:
 
     ct = sub.add_parser("contradictions", help="scan for governance contradictions (rules, cross-layer duplicates)")
 
+    g = sub.add_parser("graph", help="graph & inference (explore / trace / rca / closure)")
+    g_sub = g.add_subparsers(dest="graph_cmd", required=True)
+    ge = g_sub.add_parser("explore")
+    ge.add_argument("query")
+    ge.add_argument("--depth", type=int, default=2)
+    ge.add_argument("--limit", type=int, default=20)
+    ge.add_argument("--json", action="store_true")
+    gt = g_sub.add_parser("trace")
+    gt.add_argument("query")
+    gt.add_argument("--depth", type=int, default=4)
+    gt.add_argument("--json", action="store_true")
+    gr = g_sub.add_parser("rca")
+    gr.add_argument("query")
+    gr.add_argument("--depth", type=int, default=3)
+    gr.add_argument("--json", action="store_true")
+    gc = g_sub.add_parser("closure")
+    gc.add_argument("entity_id", type=int)
+    gc.add_argument("--rel", default="depends_on")
+    gc.add_argument("--direction", choices=["out", "in"], default="out")
+    gc.add_argument("--depth", type=int, default=5)
+    gc.add_argument("--json", action="store_true")
+
+    ir = sub.add_parser("import-rules", help="import drewgent-style rules markdown into the rules table")
+    ir.add_argument("path")
+    ii = sub.add_parser("import-incidents", help="import P6 incidents markdown dir into episodes")
+    ii.add_argument("path")
+
     sn = sub.add_parser("snapshot", help="snapshot create/rollback")
     sn_sub = sn.add_subparsers(dest="snapshot_cmd", required=True)
     sc = sn_sub.add_parser("create")
@@ -166,6 +193,33 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, ensure_ascii=False, indent=2))
         else:
             print(format_report(result))
+        return 0
+
+    if args.cmd == "graph":
+        if args.graph_cmd == "explore":
+            result = store.graph_explore(args.query, depth=args.depth, limit=args.limit)
+        elif args.graph_cmd == "trace":
+            result = store.graph_trace(args.query, depth=args.depth)
+        elif args.graph_cmd == "rca":
+            result = store.graph_rca(args.query, depth=args.depth)
+        else:
+            result = {
+                "entity_id": args.entity_id,
+                "closure": store.transitive_closure(
+                    args.entity_id, rel_type=args.rel, direction=args.direction, depth=args.depth
+                ),
+            }
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.cmd == "import-rules":
+        n = store.import_rules_md(args.path)
+        print(f"✓ imported {n} rule(s)")
+        return 0
+
+    if args.cmd == "import-incidents":
+        n = store.import_incidents_dir(args.path)
+        print(f"✓ imported {n} incident(s)")
         return 0
 
     if args.cmd == "compile-wiki":

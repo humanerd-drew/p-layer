@@ -33,7 +33,7 @@ class McpTests(unittest.TestCase):
             names,
             {"remember", "recall", "forget", "update",
              "snapshot_create", "snapshot_rollback", "memory_stats", "assemble",
-             "memory_audit"},
+             "memory_audit", "graph_explore", "graph_trace", "graph_rca"},
         )
 
     def test_remember_then_recall(self):

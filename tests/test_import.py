@@ -19,6 +19,12 @@ def _make_drewgent_db(path: Path):
             source TEXT,
             created_at TEXT
         );
+        CREATE TABLE sessions (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            created_at TEXT,
+            message_count INTEGER DEFAULT 0
+        );
         CREATE TABLE entities (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             label TEXT NOT NULL,
@@ -39,6 +45,8 @@ def _make_drewgent_db(path: Path):
                ("decision", "switched to portone v2", "session: 2026-08-07 payments", "2026-08-07T09:00:00Z"))
     db.execute("INSERT INTO knowledge (type, content, source, created_at) VALUES (?,?,?,?)",
                ("pattern", "webhook retry with exponential backoff", None, "2026-08-07T09:05:00Z"))
+    db.execute("INSERT INTO sessions (id, title, message_count) VALUES (?,?,?)",
+               ("s1", "2026-08-07 payments", 12))
     db.execute("INSERT INTO entities (label, type, properties) VALUES (?,?,?)",
                ("portone", "tool", "{}"))
     db.execute("INSERT INTO entities (label, type, properties) VALUES (?,?,?)",
@@ -62,7 +70,7 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(summary["knowledge_imported"], 2)
         self.assertEqual(summary["entities_imported"], 2)
         self.assertEqual(summary["relations_imported"], 1)
-
+        self.assertEqual(summary["sessions_imported"], 1)
         results = store.recall("portone")
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["source"], "session: 2026-08-07 payments")
@@ -72,6 +80,7 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(stats["knowledge"], 2)
         self.assertEqual(stats["entities"], 2)
         self.assertEqual(stats["relations"], 1)
+        self.assertEqual(stats["episodes"], 1)  # the drewgent session row
 
 
 if __name__ == "__main__":

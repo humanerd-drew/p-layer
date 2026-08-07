@@ -679,3 +679,156 @@ class Store:
         (out / "INDEX.md").write_text("\n".join(idx) + "\n")
         files["INDEX.md"] = sum(files.values())
         return {"dir": str(out), "files": files, "entries": sum(files.values())}
+
+    # ── graph & inference (drewgent graph_query.py parity) ────
+    def _find_entities(self, query: str, limit: int = 20) -> list[dict]:
+        """Fuzzy entity lookup: exact label first, then prefix, then substring."""
+        rows = self.db.execute(
+            "SELECT id, label, type, properties FROM entities WHERE label LIKE ? "
+            "ORDER BY CASE WHEN label = ? THEN 0 WHEN label LIKE ? THEN 1 ELSE 2 END, label LIMIT ?",
+            (f"%{query}%", query, f"{query}%", limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def _traverse(self, entity_id: int, direction: str = "out", depth: int = 3,
+                  rel_type: str | None = None) -> list[dict]:
+        """Bounded graph traversal. UNION (not UNION ALL) plus a depth cap
+        makes cycles terminate."""
+        if direction not in ("out", "in"):
+            raise ValueError("direction must be 'out' or 'in'")
+        db = self.db
+        depth = max(1, min(int(depth), 10))
+        rel_filter = "AND r.type = ?" if rel_type else ""
+        rel_params = [rel_type] if rel_type else []
+        if direction == "out":
+            base_next, base_where = "r.target_id", "r.source_id = ?"
+            rec_join = "JOIN relations r ON r.source_id = p.next_id"
+        else:
+            base_next, base_where = "r.source_id", "r.target_id = ?"
+            rec_join = "JOIN relations r ON r.target_id = p.next_id"
+        sql = f"""
+            WITH RECURSIVE path(rel_id, rel_type, next_id, lvl) AS (
+                SELECT r.id, r.type, {base_next}, 1
+                FROM relations r WHERE {base_where} {rel_filter}
+                UNION
+                SELECT r.id, r.type, {base_next}, p.lvl + 1
+                FROM path p {rec_join}
+                WHERE p.lvl < ? {rel_filter}
+            )
+            SELECT p.rel_id, p.rel_type AS relation, e.id AS entity_id, e.label, e.type AS entity_type, p.lvl AS level
+            FROM path p JOIN entities e ON e.id = p.next_id
+            ORDER BY p.lvl, p.rel_id
+        """
+        rows = db.execute(sql, [entity_id] + rel_params + [depth] + rel_params).fetchall()
+        return [dict(r) for r in rows]
+
+    def graph_explore(self, query: str, depth: int = 2, limit: int = 20) -> dict:
+        """Entity lookup + outbound neighbors (drewgent graph-explore parity)."""
+        out = {"query": query, "entities": []}
+        for e in self._find_entities(query, limit):
+            seen: set[tuple] = set()
+            neighbors = []
+            for n in self._traverse(e["id"], "out", depth):
+                key = (n["relation"], n["entity_id"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                neighbors.append(n)
+            out["entities"].append({
+                "id": e["id"], "label": e["label"], "type": e["type"],
+                "neighbors": neighbors,
+            })
+        return out
+
+    def graph_trace(self, query: str, depth: int = 4) -> dict:
+        """Entity + bidirectional paths (drewgent graph-trace parity)."""
+        out = {"query": query, "trace": []}
+        for e in self._find_entities(query):
+            out["trace"].append({
+                "entity": e["label"], "type": e["type"],
+                "inbound": self._traverse(e["id"], "in", depth),
+                "outbound": self._traverse(e["id"], "out", depth),
+            })
+        return out
+
+    def graph_rca(self, query: str, depth: int = 3) -> dict:
+        """Root-cause analysis: incidents/patterns with their inbound `caused`
+        chain and outbound `fixed_by` chain (drewgent graph-rca parity)."""
+        out = {"query": query, "root_causes": []}
+        for e in self._find_entities(query):
+            if e["type"] not in ("incident", "pattern"):
+                continue
+            timeline = (
+                [{"type": "cause", "entity": c["label"], "entity_type": c["entity_type"],
+                  "level": c["level"]} for c in self._traverse(e["id"], "in", depth, rel_type="caused")]
+                + [{"type": "fix", "entity": f["label"], "entity_type": f["entity_type"],
+                    "level": f["level"]} for f in self._traverse(e["id"], "out", depth, rel_type="fixed_by")]
+            )
+            out["root_causes"].append({
+                "incident": {"id": e["id"], "label": e["label"], "type": e["type"]},
+                "timeline": timeline,
+            })
+        return out
+
+    def transitive_closure(self, entity_id: int, rel_type: str = "depends_on",
+                           direction: str = "out", depth: int = 5) -> list[dict]:
+        """Chain of rel_type hops from an entity (inference.py transitive parity)."""
+        return self._traverse(entity_id, direction, depth, rel_type=rel_type)
+
+    # ── vault ingest (optional: rules.md → rules, incidents → episodes) ──
+    def import_rules_md(self, path: str | Path) -> int:
+        """Parse a drewgent-style rules markdown into the rules table.
+
+        Per entry:
+          ## [P0] rule text
+          priority: N        (optional)
+          scope: ...         (optional)
+          condition: ...     (optional)
+        Idempotent: identical (text, layer, priority) rules are skipped.
+        """
+        text = Path(path).read_text(encoding="utf-8")
+        imported = 0
+        for block in re.split(r"^## ", text, flags=re.M)[1:]:
+            lines = block.splitlines()
+            heading = lines[0].strip()
+            m = re.match(r"\[(P[0-6])\]\s*(.*)", heading)
+            layer = m.group(1) if m else "P0"
+            rule_text = (m.group(2) if m else heading).strip()
+            priority, scope, condition = 100, None, None
+            for ln in lines[1:]:
+                ln = ln.strip()
+                mm = re.match(r"priority:\s*(\d+)", ln)
+                if mm:
+                    priority = int(mm.group(1))
+                mm = re.match(r"scope:\s*(.+)", ln)
+                if mm:
+                    scope = mm.group(1)
+                mm = re.match(r"condition:\s*(.+)", ln)
+                if mm:
+                    condition = mm.group(1)
+            if not rule_text:
+                continue
+            exists = self.db.execute(
+                "SELECT id FROM rules WHERE text = ? AND layer = ? AND priority = ? AND enabled = 1",
+                (rule_text, layer, priority),
+            ).fetchone()
+            if exists is None:
+                self.add_rule(rule_text, priority=priority, layer=layer, scope=scope,
+                              condition=condition, source="import_rules_md")
+                imported += 1
+        return imported
+
+    def import_incidents_dir(self, path: str | Path) -> int:
+        """Read P6-prefrontal/incidents/*.md into episodes (kind='incident').
+        Idempotent per file name."""
+        imported = 0
+        for f in sorted(Path(path).glob("*.md")):
+            dup = self.db.execute(
+                "SELECT id FROM episodes WHERE kind = 'incident' AND payload LIKE ? LIMIT 1",
+                (f"%{f.name}%",),
+            ).fetchone()
+            if dup is not None:
+                continue
+            self.record_episode("incident", {"file": f.name, "content": f.read_text(encoding="utf-8")})
+            imported += 1
+        return imported

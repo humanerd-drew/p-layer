@@ -33,8 +33,10 @@ P0-P6 "뇌 레이어" 메모리 개념(drewgent, p-layer)은 훌륭하지만, �
 | **감사 로그** | 모든 쓰기 + 모든 거부된 쓰기 기록 — 거버넌스 준수 증거 |
 | **모순 스캔** | LLM 없이 휴리스틱: 규칙 우선순위 충돌, 레이어 간 중복 |
 | **P5 위키 컴파일** | 활성 메모리를 레이어별 마크다운(provenance 포함) + INDEX로 오프라인 컴파일 |
-| **MCP 서버** | 9개 툴, 의존성 0 stdio 구현 — opencode/Claude/Cursor 어디든 |
-| **이식 도구** | `import-drewgent` — 기존 drewgent `knowledge.db`를 스키마 재검증·재임베딩하며 이식 |
+| **MCP 서버** | 12개 툴, 의존성 0 stdio 구현 — opencode/Claude/Cursor 어디든 |
+| **이식 도구** | `import-drewgent` — 기존 drewgent `knowledge.db`를 스키마 재검증·재임베딩하며 이식 (세션은 episodes로 이관) |
+| **그래프 & 추론** | `graph_explore` / `graph_trace` / `graph_rca`(caused/fixed_by 체인) / `transitive_closure` — drewgent graph_query.py 패리티, 사이클 안전 |
+| **볼트 인제스트** | `import-rules`(rules.md → rules), `import-incidents`(P6 사건 → episodes) — 볼트는 파일로 유지, memcore가 참조 |
 
 ## 증명: 거버넌스가 검색 품질을 높인다
 
@@ -109,14 +111,33 @@ MCP (opencode / Claude Desktop / Cursor):
 ## 개발
 
 ```bash
-python3 -m unittest discover -s tests -v   # 59개 테스트, 의존성·네트워크 없음
+python3 -m unittest discover -s tests -v   # 71개 테스트, 의존성·네트워크 없음
 ```
 
 ## 예제
 
 - `examples/quickstart.py` — API 워크스루
-- `examples/demo_import_eval.sh` — 증명 파이프라인 전체: drewgent 픽스처 → 이식 → 거버넌스 전후 eval → 감사 → 모순 → 위키
+- `examples/demo_import_eval.sh` — 전체 이주 스토리: drewgent 픽스처(지식+세션+온톨로지+볼트 파일) → 이식 → 볼트 인제스트 → 거버넌스 전후 eval → 감사 → 그래프 → 모순 → 위키
 - `examples/suite.example.json` — eval 스위트 형식
+- `examples/opencode-memcore.jsonc` — drewgent의 remember/recall 툴을 대체하는 MCP 설정 (복붙용)
+
+## drewgent 메모리를 memcore로 교체하기
+
+볼트(정체성·페르소나·스킬 파일)는 파일로 유지한다 — 저장소 클래스가 다르며 DB가 되어서는 안 된다. memcore는 **지식 레이어**를 대체한다:
+
+```bash
+# 1. 데이터 이주 (지식 + 엔티티 + 관계 + 세션)
+python3 -m memcore import-drewgent ~/.drewgent/.opencode/knowledge.db --embed ollama
+
+# 2. 볼트 중 스토어에 속하는 것만 인제스트 (선택)
+python3 -m memcore import-rules ~/.drewgent/@identity/brain/rules.md
+python3 -m memcore import-incidents ~/.drewgent/P6-prefrontal/incidents
+
+# 3. 에이전트를 MCP 서버로 연결 (examples/opencode-memcore.jsonc),
+#    AGENTS.md의 툴 지시도 memcore 기준으로 교체
+```
+
+교체 후 `memcore eval suite.json`이 증명한다: 같은 데이터, 거버넌스 메타데이터 적용 시 recall@k 0.667 → 1.000, ACL 30/30.
 
 ## 크레딧
 

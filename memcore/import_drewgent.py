@@ -78,12 +78,29 @@ def import_drewgent(src_path: str | Path, store: Store, reembed: bool = True) ->
         except sqlite3.OperationalError:
             pass
 
+        sessions_imported = 0
+        try:
+            sessions = src.execute(
+                "SELECT id, title, created_at, message_count FROM sessions ORDER BY id"
+            ).fetchall()
+            for s in sessions:
+                store.record_episode(
+                    "session",
+                    {"title": s["title"], "message_count": s["message_count"]},
+                    session_id=str(s["id"]),
+                )
+                sessions_imported += 1
+        except sqlite3.OperationalError:
+            pass
+
         return {
             "knowledge_imported": imported,
             "entities_imported": len(entities),
             "relations_imported": relations_ok,
             "relations_skipped": relations_skipped,
+            "sessions_imported": sessions_imported,
             "reembedded": reembed,
         }
+
     finally:
         src.close()

@@ -33,8 +33,10 @@ This repo is the production-grade rebuild: the governance ideas ported from p-la
 | **Audit log** | Every write *and every denied write* is recorded — the compliance evidence. |
 | **Contradiction scan** | Heuristic scan (no LLM): conflicting rule priorities, cross-layer duplicates. |
 | **P5 wiki compile** | Offline compile of active memory into per-layer markdown with provenance + INDEX. |
-| **MCP server** | 9 tools (`remember`, `recall`, `forget`, `update`, `snapshot_*`, `memory_stats`, `memory_audit`, `assemble`) — zero-dependency stdio implementation. |
-| **Import tool** | `import-drewgent` migrates an existing drewgent `knowledge.db` (schema re-validated, re-embedded). |
+| **MCP server** | 12 tools (`remember`, `recall`, `forget`, `update`, `snapshot_*`, `memory_stats`, `memory_audit`, `assemble`, `graph_explore`, `graph_trace`, `graph_rca`) — zero-dependency stdio implementation, any client. |
+| **Import tool** | `import-drewgent` migrates an existing drewgent `knowledge.db` (schema re-validated, re-embedded, sessions carried into episodes). |
+| **Graph & inference** | `graph_explore` / `graph_trace` / `graph_rca` (caused/fixed_by chains) / `transitive_closure` — drewgent graph_query.py parity, cycle-safe traversal. |
+| **Vault ingest** | `import-rules` (rules.md → rules) and `import-incidents` (P6 incidents → episodes) — the vault stays files, memcore references it. |
 
 ## Proof: governance improves retrieval
 
@@ -127,14 +129,33 @@ Precedence is data, not prose: lower priority/higher authority wins, and `assemb
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests -v   # 59 tests, no deps, no network
+python3 -m unittest discover -s tests -v   # 71 tests, no deps, no network
 ```
 
 ## Examples
 
 - `examples/quickstart.py` — API walkthrough
-- `examples/demo_import_eval.sh` — the full proof pipeline: drewgent fixture → import → eval before/after governance → audit → contradictions → wiki
+- `examples/demo_import_eval.sh` — the full migration story: drewgent fixture (knowledge + sessions + ontology + vault files) → import → vault ingest → eval before/after governance → audit → graph → contradictions → wiki
 - `examples/suite.example.json` — eval suite format
+- `examples/opencode-memcore.jsonc` — ready-to-paste MCP config that replaces drewgent's remember/recall tooling
+
+## Replace drewgent's memory with memcore
+
+The vault (identity, persona, skills as files) stays as files — it is a different storage class and should not be a database. memcore replaces the *knowledge layer*:
+
+```bash
+# 1. migrate the data (knowledge + entities + relations + sessions)
+python3 -m memcore import-drewgent ~/.drewgent/.opencode/knowledge.db --embed ollama
+
+# 2. ingest what the vault holds that belongs in the store (optional)
+python3 -m memcore import-rules ~/.drewgent/@identity/brain/rules.md
+python3 -m memcore import-incidents ~/.drewgent/P6-prefrontal/incidents
+
+# 3. point the agent at the MCP server (examples/opencode-memcore.jsonc),
+#    and update AGENTS.md so it uses the memcore tools
+```
+
+Then `memcore eval suite.json` proves the swap: same data, recall@k 0.667 → 1.000 with governance metadata, ACL 30/30.
 
 ## Credits
 
