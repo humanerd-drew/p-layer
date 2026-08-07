@@ -95,15 +95,13 @@ Suppose your AI assistant is maintaining a small shop's payment system.
 
 ## Proof it works
 
-The same test data, two engines: the original naive approach and p-layer.
+The eval harness (`p_layer eval <suite.json>`) runs the same data through two engines — the drewgent baseline (a reconstruction of its `searchKnowledge`: quote-stripped OR-join FTS5) and p-layer (hybrid FTS5 + semantic, RRF-fused) — and reports recall@k for both, plus ACL compliance:
 
-```
-same data, two engines:
-  original baseline : 0.667 (2/3)      ← finds 2 of 3 things you asked for
-  p-layer           : 1.000 (3/3)      ← finds all 3
+```bash
+python3 -m p_layer eval examples/suite.example.json
 ```
 
-In plain words: when asked to retrieve specific past decisions, p-layer found everything the baseline missed, because it ranks by **how certain the memory was** and **how fresh it is**, not just by word matching. And these rules are not theoretical: all 30 permission rules (every layer × every writer) are enforced correctly by the system.
+Retrieval scores depend on your data and embedder, so this page does not hard-code them; `benchmarks/real_data_bench.py` measures recall@k / MRR on a real memory archive. What is deterministic is the governance: p-layer ranks by **how certain the memory was** and **how fresh it is**, not just by word matching, and all 30 (layer, who) permission cases (every layer × every writer) are enforced by the system (`pass_rate: 1.0`) with every denied write recorded in the audit log.
 
 ---
 
@@ -148,8 +146,8 @@ Agents talk to memory through **MCP**, the standard connector. Add one block to 
 - **Ops jobs**: `reembed` (versioned vector backfill), `consolidate` (episodic → semantic digests), `compile-wiki` (P5 pages). SQLite-only; on PostgreSQL they raise loudly rather than silently degrade.
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — same interface and behavior, verified by a shared parity suite (pg_trgm ILIKE for CJK, pgvector optional).
 - **MCP server**: 13 tools, zero-dependency stdio implementation, verified end-to-end by wire-level tests (and against the official SDK in CI).
-- **Migration**: `import-drewgent` moves an existing drewgent `knowledge.db` in (schema re-validated, sessions preserved); `import-rules` / `import-incidents` bring vault files in.
-- **Tests**: 138 — SQLite + PostgreSQL parity, governance, graph, ops, MCP wire, packaging.
+- **drewgent integration**: `import-drewgent` migrates a legacy drewgent `knowledge.db` (knowledge/entities/relations/sessions tables) into a p_layer store; `p_layer.drewdb` opens a live drew.db-style database under a managed connection (WAL, busy timeout, `p_layer_meta` registry) so an existing agentmemory server keeps its schema and tools while p_layer governs the connection. `import-rules` / `import-incidents` bring vault files in.
+- **Tests**: 156 — SQLite + PostgreSQL parity, governance, graph, ops, MCP wire, packaging.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · package: **`p_layer`** · console: **`p-layer`**
 
 ```bash

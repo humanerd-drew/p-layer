@@ -1,4 +1,4 @@
-"""p-layers 1.0 MCP server — knowledge_* tool names over the p_layer engine.
+"""p-layers MCP server — 0.1.x-compatible knowledge_* tool names over the p_layer engine.
 
 Drop-in for 0.1.x MCP clients (opencode, Claude Desktop): same tool names
 (knowledge_remember, knowledge_recall, knowledge_forget, knowledge_update,

@@ -1,8 +1,8 @@
 """p_layer — production-grade agent memory layer.
 
 Stdlib-only. SQLite + FTS5 + pluggable embeddings. Single-writer, single-user
-first, designed so the store can be swapped for Postgres later without touching
-the write/read API.
+first; the same write/read API is also implemented by p_layer.pgstore.PgStore
+(PostgreSQL, parity-tested) for shared multi-agent use.
 
 Layers (v2, ported from p-layer's governance design):
   knowledge      — semantic memory (facts, decisions, preferences, patterns)

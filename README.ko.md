@@ -95,15 +95,13 @@ p-layer는 이 세 가지 실패에 대한 답이다: **검색보다 규칙이 �
 
 ## 증명
 
-같은 테스트 데이터, 두 엔진: 원래의 단순한 방식과 p-layer.
+평가 하네스(`p_layer eval <suite.json>`)는 같은 데이터를 두 엔진 — drewgent 기준선(그 `searchKnowledge`의 재현: 따옴표 제거 + OR-조인 FTS5)과 p-layer(FTS5 + 시맨틱 하이브리드, RRF 퓨전) — 에 돌려 두 엔진의 recall@k와 ACL 준수율을 보고한다:
 
-```
-같은 데이터, 두 엔진:
-  원래 방식   : 0.667 (2/3)      ← 요청한 것 3개 중 2개만 찾음
-  p-layer     : 1.000 (3/3)      ← 3개 전부 찾음
+```bash
+python3 -m p_layer eval examples/suite.example.json
 ```
 
-쉽게 말해: 과거 결정을 검색하라는 요청에서, p-layer는 **메모리의 확신도와 신선도**로 순위를 매기기 때문에(단순 단어 매칭이 아니라) 원래 방식이 놓친 것을 전부 찾았다. 그리고 규칙은 이론이 아니다 — 30개의 권한 규칙(모든 레이어 × 모든 작성자)이 시스템에 의해 정확히 집행된다.
+검색 점수는 데이터와 임베더에 따라 달라지므로 이 페이지에 특정 수치를 박아두지 않는다. 실제 메모리 아카이브 기준 recall@k / MRR은 `benchmarks/real_data_bench.py`로 측정한다. 결정적인 것은 거버넌스다: p-layer는 단순 단어 매칭이 아니라 **메모리의 확신도와 신선도**로 순위를 매기고, 30개 (레이어, 작성자) 권한 케이스(모든 레이어 × 모든 작성자)가 시스템에 의해 정확히 집행되며(`pass_rate: 1.0`), 거부된 쓰기마다 감사 로그에 기록된다.
 
 ---
 
@@ -148,8 +146,8 @@ p-layer assemble             # 규칙 + 최근 메모리 — 컨텍스트로 바
 - **운영 잡**: `reembed`(버전관리 벡터 백필), `consolidate`(episodic → semantic 다이제스트), `compile-wiki`(P5 페이지). SQLite 전용, PostgreSQL에서는 조용히 망가지지 않고 명시적으로 거부.
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — 동일 인터페이스·동작, 공유 패리티 스위트로 검증 (CJK 대응 pg_trgm ILIKE, pgvector 선택).
 - **MCP 서버**: 13개 툴, 의존성 0 stdio 구현, 와이어 레벨 테스트로 엔드투엔드 검증 (CI에서 공식 SDK로도).
-- **이주**: `import-drewgent` — 기존 drewgent `knowledge.db` 이식(스키마 재검증, 세션 보존), `import-rules` / `import-incidents` — 볼트 파일 이식.
-- **테스트**: 138개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징.
+- **drewgent 통합**: `import-drewgent`는 레거시 drewgent `knowledge.db`(knowledge/entities/relations/sessions 테이블)를 p_layer 스토어로 이식한다. `p_layer.drewdb`는 라이브 drew.db 형식 데이터베이스를 관리형 커넥션(WAL, busy timeout, `p_layer_meta` 레지스트리)으로 열어, 기존 agentmemory 서버가 스키마와 툴을 유지한 채 p_layer가 커넥션을 관리하게 한다. `import-rules` / `import-incidents`는 볼트 파일을 이식한다.
+- **테스트**: 156개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · 패키지: **`p_layer`** · 콘솔: **`p-layer`**
 
 ```bash
