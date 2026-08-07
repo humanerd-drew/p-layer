@@ -3,15 +3,16 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "memcore"
+name = "p-layers"
 version = "0.6.0"
-description = "Production-grade agent memory layer — SQLite + FTS5 + pluggable embeddings, stdlib-only"
+description = "Governed memory for AI agents — P0-P6 layer governance enforced in code. SQLite + FTS5 + pluggable embeddings, PostgreSQL backend, MCP server, eval harness. (GitHub: memcore)"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 dependencies = []
+readme = "README.md"
 
 [project.scripts]
 memcore = "memcore.cli:main"
 
 [tool.setuptools]
-packages = ["memcore"]
+packages = ["memcore", "p_layer", "p_layer.core", "p_layer.mcp"]

@@ -37,7 +37,7 @@ P0-P6 "뇌 레이어" 메모리 개념(drewgent, p-layer)은 훌륭하지만, �
 | **이식 도구** | `import-drewgent` — 기존 drewgent `knowledge.db`를 스키마 재검증·재임베딩하며 이식 (세션은 episodes로 이관) |
 | **그래프 & 추론** | `graph_explore` / `graph_trace` / `graph_rca`(caused/fixed_by 체인) / `transitive_closure` — drewgent graph_query.py 패리티, 사이클 안전 |
 | **볼트 인제스트** | `import-rules`(rules.md → rules), `import-incidents`(P6 사건 → episodes) — 볼트는 파일로 유지, memcore가 참조 |
-| **p-layers 1.0 호환** | `p_layer/`가 0.1.x `KnowledgeDB` API와 `knowledge_*` MCP 툴을 이 엔진 위에 노출 — 기존 p-layers 설치가 코드 수정 없이 업그레이드 |
+| **p-layers 호환** | 이 패키지는 PyPI에 **`p-layers`**로 발행된다 (GitHub 레포: memcore). `p_layer/`가 0.1.x `KnowledgeDB` API와 `knowledge_*` MCP 툴을 이 엔진 위에 노출 — 기존 p-layers 설치가 코드 수정 없이 업그레이드 |
 | **재임베딩 잡** | `reembed` — 모델 전환 후 임베딩 백필. 벡터는 버전관리(이전 버전 유지), recall은 현재 버전만 조회. 멱등 |
 | **Consolidation** | `consolidate` — 미압축 에피소드를 `insight` 다이제스트로 압축(episodic → semantic). 오프라인 결정적 요약 + LLM 훅, 멱등, 감사 기록 |
 | **PostgreSQL 백엔드** | `PgStore` — SQLite `Store`와 동일 인터페이스·거버넌스, 패리티 테스트로 검증 (pg_trgm ILIKE로 CJK, pgvector 시맨틱). 운영 잡은 SQLite 전용, 명시적으로만 |

@@ -38,7 +38,7 @@ This repo is the production-grade rebuild: the governance ideas ported from p-la
 | **Import tool** | `import-drewgent` migrates an existing drewgent `knowledge.db` (schema re-validated, re-embedded, sessions carried into episodes). |
 | **Graph & inference** | `graph_explore` / `graph_trace` / `graph_rca` (caused/fixed_by chains) / `transitive_closure` — drewgent graph_query.py parity, cycle-safe traversal. |
 | **Vault ingest** | `import-rules` (rules.md → rules) and `import-incidents` (P6 incidents → episodes) — the vault stays files, memcore references it. |
-| **p-layers 1.0 compat** | `p_layer/` exposes the 0.1.x `KnowledgeDB` API and `knowledge_*` MCP tools over this engine — existing p-layers integrations upgrade without code changes. |
+| **p-layers compat** | This package is published on PyPI as **`p-layers`** (GitHub repo: memcore). `p_layer/` keeps the 0.1.x `KnowledgeDB` API and `knowledge_*` MCP tools over this engine — existing p-layers integrations upgrade without code changes. |
 | **Re-embed job** | `reembed` backfills embeddings after a model switch; vectors are versioned (old versions stay queryable), recall only reads the current version. Idempotent. |
 | **Consolidation** | `consolidate` compresses unconsolidated episodes into `insight` digests — deterministic offline summarizer, pluggable LLM hook, idempotent, audited. |
 | **PostgreSQL backend** | `PgStore` — the same interface, governance, and parity-tested behavior on Postgres (pg_trgm ILIKE for CJK, pgvector semantic). Ops jobs stay SQLite-only, loudly. |
