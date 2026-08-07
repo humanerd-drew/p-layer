@@ -1,0 +1,133 @@
+# memcore
+
+**에이전트를 위한 거버넌스 메모리.** 의존성 0(Python 표준 라이브러리만)으로 동작하는 메모리 레이어 — SQLite + FTS5 + 플러그형 임베딩, 그리고 P0-P6 레이어 거버넌스를 **프롬프트가 아니라 코드로 강제**.
+
+```
+7 layers. 1 memory. Every write audited.
+```
+
+[English](./README.md)
+
+## 왜 만들었나
+
+P0-P6 "뇌 레이어" 메모리 개념(drewgent, p-layer)은 훌륭하지만, 레퍼런스 구현들은 같은 핵심 결함을 공유한다:
+
+| 결함 | drewgent / p-layer | memcore |
+|---|---|---|
+| 스키마 관리 | `CREATE TABLE IF NOT EXISTS` 남발, 버전 없음 | forward-only + 체크섬 마이그레이션(`schema_migrations`) |
+| 검색 인덱스 | external-content FTS5 + 트리거(취약, p-layer `forget`은 이를 깨뜨림) | standalone FTS5, 트리거 결합 없음 |
+| 이중 구현 | TS+Python, SQLite+Pg — 드리프트하며 기능 유실 | 단일 구현, 단일 스키마 |
+| 거버넌스 | README 표에만 존재("P0이 이긴다") | **코드로 강제** — 레이어 ACL이 `WriteDenied` 예외 발생 |
+| remember 툴 | layer=P6 하드코딩, 자기 거버넌스를 우회 | 레이어는 쓰기 파라미터, ACL 검사됨 |
+
+이 저장소는 프로덕션급 재건이다: p-layer의 거버넌스 아이디어를 이식하고, 원본에 없던 스키마 규율을 더하고, **거버넌스가 검색 품질을 높인다는 것을 숫자로 증명하는 이벨 하네스**를 갖췄다.
+
+## 기능
+
+| 기능 | 설명 |
+|---|---|
+| **P0-P6 레이어 ACL** | 레이어별 쓰기 주체를 코드로 강제 (P0는 system만 … P6는 agent+manual). 거부된 쓰기도 감사 로그에 기록 |
+| **하이브리드 recall** | FTS5 + 시맨틱(Ollama 또는 플러그형), RRF 퓨전, confidence × freshness 랭킹, 타입 다양화, superseded 제외 |
+| **supersede-not-delete** | forget/update는 항목을 대체. 이력 보존, recall에서는 사라짐 |
+| **스냅샷** | 활성 항목을 버전 라벨로 고정, 롤백 시 이후 항목 일괄 대체 |
+| **감사 로그** | 모든 쓰기 + 모든 거부된 쓰기 기록 — 거버넌스 준수 증거 |
+| **모순 스캔** | LLM 없이 휴리스틱: 규칙 우선순위 충돌, 레이어 간 중복 |
+| **P5 위키 컴파일** | 활성 메모리를 레이어별 마크다운(provenance 포함) + INDEX로 오프라인 컴파일 |
+| **MCP 서버** | 9개 툴, 의존성 0 stdio 구현 — opencode/Claude/Cursor 어디든 |
+| **이식 도구** | `import-drewgent` — 기존 drewgent `knowledge.db`를 스키마 재검증·재임베딩하며 이식 |
+
+## 증명: 거버넌스가 검색 품질을 높인다
+
+같은 데이터, 두 엔진, 한 명령어(`memcore eval suite.json`):
+
+```
+recall@k (same data, two engines):
+  drewgent baseline : 0.667 (2/3)      ← naive FTS OR-join, 삽입 순서
+  memcore           : 1.000 (3/3)      ← confidence/freshness 랭킹
+  delta             : +0.333
+ACL compliance: 100.0% (30/30) enforcement cases correct
+```
+
+베이스라인은 메타데이터가 없어 움직일 수 없다. memcore는 거버넌스 메타데이터(confidence, 레이어, supersession)를 검색 품질로 전환하고, ACL 30케이스 전부가 정확히 허가/거부된다.
+
+## 빠른 시작
+
+```bash
+# 의존성 없음 (Python >= 3.9)
+export MEMCORE_EMBED=hash   # 오프라인 폴백; 기본은 ollama
+export MEMCORE_DB=~/.memcore/memory.db
+
+python3 -m memcore init
+python3 -m memcore remember "switched to portone v2 for payments" --type decision --layer P5
+python3 -m memcore recall "portone"
+python3 -m memcore assemble --budget 12000     # 규칙 먼저, 최근 지식 다음
+```
+
+Python API:
+
+```python
+from memcore.store import Store, WriteDenied
+
+db = Store()
+db.add_knowledge("client prefers weekly sync", type="preference", layer="P6", who="agent")
+print(db.recall("weekly sync", limit=5))
+try:
+    db.add_knowledge("secret", layer="P0", who="agent")   # P0은 system만
+except WriteDenied:
+    pass
+print(db.audit_log(denied_only=True))                     # 거부 기록이 남아 있다
+```
+
+MCP (opencode / Claude Desktop / Cursor):
+
+```json
+{
+  "mcp": {
+    "memcore": {
+      "type": "local",
+      "command": ["python3", "-m", "memcore", "serve"],
+      "env": { "MEMCORE_DB": "~/.memcore/memory.db" }
+    }
+  }
+}
+```
+
+## 거버넌스 모델
+
+| 레이어 | 목적 | 쓰기 허용 |
+|---|---|---|
+| P0 | 불변 규칙 | system만 |
+| P1 | 정체성 & 페르소나 | system만 |
+| P2 | 원시 세션 아카이브 | system, gateway, cron |
+| P3 | 툴 통합 | system, gateway, cron |
+| P4 | 스킬 & 성장 | system, cron, agent, manual |
+| P5 | 컴파일된 지식 | system, cron, agent, manual, tool |
+| P6 | 사건 & RCA | system, cron, agent, manual, tool |
+
+우선순위는 프롬프트가 아니라 데이터다. `assemble()`은 토큰 예산 아래 프리시던스 순서로 규칙을 내보낸다.
+
+## 개발
+
+```bash
+python3 -m unittest discover -s tests -v   # 59개 테스트, 의존성·네트워크 없음
+```
+
+## 예제
+
+- `examples/quickstart.py` — API 워크스루
+- `examples/demo_import_eval.sh` — 증명 파이프라인 전체: drewgent 픽스처 → 이식 → 거버넌스 전후 eval → 감사 → 모순 → 위키
+- `examples/suite.example.json` — eval 스위트 형식
+
+## 크레딧
+
+다음 프로젝트들의 아이디어를 프로덕션급으로 재건한 것입니다:
+
+- [opencode-drewgent](https://github.com/humanerd-drew/opencode-drewgent) — P0-P6 볼트 개념, provenance 규약
+- [p-layer](https://github.com/humanerd-drew/p-layer) — 레이어 권한/ACL 설계, supersede-not-delete, confidence/TTL 랭킹, 스냅샷
+- [Gajae-Code](https://github.com/Yeachan-Heo/gajae-code) — 에이전트 오케스트레이션 관례
+
+이 저장소를 만든 비판적 평가는 README 위쪽에, 좋은 아이디어의 출처는 크레딧에 있습니다.
+
+## 라이선스
+
+MIT

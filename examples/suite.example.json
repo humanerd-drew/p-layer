@@ -1,0 +1,7 @@
+{
+  "queries": [
+    {"query": "payment gateway retry", "expected": ["exponential backoff"], "k": 1},
+    {"query": "portone payments", "expected": ["portone v2"], "k": 3},
+    {"query": "weekly sync", "expected": ["weekly sync"], "k": 3}
+  ]
+}
