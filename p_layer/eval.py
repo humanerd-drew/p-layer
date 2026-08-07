@@ -41,13 +41,18 @@ def load_suite(path: str | Path) -> dict:
 
 
 def _drewgent_baseline_search(db: sqlite3.Connection, query: str, limit: int) -> list[int]:
-    """Replicates drewgent's searchKnowledge(): strip quotes, OR-join whitespace."""
+    """Replicates drewgent's searchKnowledge(): strip quotes, OR-join whitespace.
+    Arbitrary user strings can break FTS5 syntax (drewgent's TS tool crashes on
+    them); the benchmark treats those as empty results."""
     safe = query.replace("'", "").replace('"', "").replace(" ", " OR ")
-    rows = db.execute(
-        "SELECT k.id FROM knowledge_fts f JOIN knowledge k ON k.id = f.rowid "
-        "WHERE knowledge_fts MATCH ? ORDER BY rank LIMIT ?",
-        (safe, limit),
-    ).fetchall()
+    try:
+        rows = db.execute(
+            "SELECT k.id FROM knowledge_fts f JOIN knowledge k ON k.id = f.rowid "
+            "WHERE knowledge_fts MATCH ? ORDER BY rank LIMIT ?",
+            (safe, limit),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
     return [r[0] for r in rows]
 
 

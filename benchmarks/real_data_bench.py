@@ -52,18 +52,18 @@ def make_suite(db_path: str, seed: int = 7) -> dict:
         ts = tokens(r["content"])
         if len(ts) >= 2:
             queries.append({"query": " ".join(ts[:2]), "expected": [r["content"][:50]], "k": 5})
-    # hard case: concatenated CJK compounds (no separator) — FTS boundary stress
-    hard = []
-    for r in rows:
-        ts = tokens(r["content"])
-        for i in range(len(ts) - 1):
-            compound = ts[i] + ts[i + 1]
-            if re.fullmatch(r"[가-힣]{4,}", compound):
-                hard.append({"query": compound, "expected": [r["content"][:50]], "k": 5})
-                break
-        if len(hard) >= 10:
-            break
-    return {"queries": queries + hard}
+    # phrase-recall: mid-content substrings (not token-aligned) — the
+    # "I remember part of a phrase" scenario where the ILIKE complement
+    # should beat token-exact FTS, especially for Korean.
+    phrase = []
+    rng2 = random.Random(seed + 1)
+    for r in rng2.sample(rows, min(30, len(rows))):
+        runs = [m.group() for m in re.finditer(r"[가-힣]{10,}", r["content"])]
+        if runs:
+            run = rng2.choice(runs)
+            st = rng2.randint(0, len(run) - 8)
+            phrase.append({"query": run[st:st + 8], "expected": [r["content"][:50]], "k": 5})
+    return {"queries": queries + phrase}
 
 
 def recall_mrr(store, baseline, suite, k):
@@ -148,8 +148,8 @@ def main():
     print(f"  store: {stats['knowledge']} knowledge / {stats['by_type']}")
 
     suite = make_suite(REAL_DB)
-    print(f"\n[eval] {len(suite['queries'])} queries on real data "
-          f"({sum(1 for q in suite['queries'] if len(q['query'].replace(' ','')) < 5)} CJK-compound hard cases)")
+    print(f"\n[eval] {len(suite['queries'])} queries on real data — "
+          f"{sum(1 for q in suite['queries'] if ' ' not in q['query'])} phrase-recall (mid-content substring) cases")
     baseline = build_drewgent_baseline(store)
     res = recall_mrr(store, baseline, suite, k=5)
     baseline.close()
