@@ -2,6 +2,7 @@
 
 **Governed memory for AI agents.** A stdlib-only Python memory layer — SQLite + FTS5 + pluggable embeddings — with P0-P6 layer governance enforced in code, not prose.
 
+[![CI](https://github.com/humanerd-drew/memcore/actions/workflows/ci.yml/badge.svg)](https://github.com/humanerd-drew/memcore/actions/workflows/ci.yml)
 ```
 7 layers. 1 memory. Every write audited.
 ```
