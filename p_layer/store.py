@@ -141,10 +141,16 @@ def rrf_fuse(fts: list[dict], sem: list[tuple[float, int]], limit: int,
     )
     seen: dict[str, int] = {}
     out: list[dict] = []
+    # Diversification caps per type are meaningless on a homogeneous corpus
+    # (e.g. imported drewgent memory where every entry maps to 'fact') and
+    # would starve recall below the requested limit. Cap only when 2+ types
+    # actually compete.
+    distinct_types = len({e["row"]["type"] for e in candidates})
+    cap = limit if distinct_types == 1 else 3
     for entry in ordered:
         row = entry["row"]
         t = row["type"]
-        if seen.get(t, 0) >= 3:  # diversify: cap 3 per type
+        if seen.get(t, 0) >= cap:
             continue
         seen[t] = seen.get(t, 0) + 1
         final = entry["rrf"] * (0.5 + 0.5 * row["confidence"]) * _freshness(row)

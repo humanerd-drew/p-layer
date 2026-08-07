@@ -6,6 +6,8 @@
 !p_layer/**
 !tests/
 !tests/**
+!benchmarks/
+!benchmarks/**
 !examples/
 !examples/**
 !.github/

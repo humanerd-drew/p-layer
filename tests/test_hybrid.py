@@ -44,6 +44,15 @@ class HybridRecallTests(unittest.TestCase):
         self.assertLessEqual(counts.get("pattern", 0), 3)
         self.assertLessEqual(counts.get("fact", 0), 3)
 
+    def test_homogeneous_corpus_not_starved_by_cap(self):
+        # Regression: imported drewgent memory maps every entry to 'fact', so a
+        # per-type diversification cap would starve recall below the limit.
+        s = self._store(NoopEmbedder())
+        for i in range(6):
+            s.add_knowledge(f"marketing strategy document {i} b2b analysis", type="fact")
+        results = s.recall("marketing b2b", limit=5)
+        self.assertEqual(len(results), 5)  # full limit, no cap starvation
+        self.assertTrue(all(r["type"] == "fact" for r in results))
     def test_rrf_fusion_prefers_dual_matches(self):
         s = self._store(HashEmbedder())
         s.add_knowledge("portone webhook retry policy for payments", type="pattern")
