@@ -1,5 +1,10 @@
 # p-layer
 
+[![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
+[![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-154%20passed-green)](README.md)
+
 **Memory for AI agents with rules that are kept, not just written.**
 
 🌏 [README.ko.md](README.ko.md) — 한국어
