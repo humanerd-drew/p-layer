@@ -173,8 +173,8 @@ MIT
 
 ---
 
-## Demo (26초)
+## Demo
 
-<video src="examples/p-layer-demo.mp4" width="640" controls></video>
+<a href="examples/p-layer-demo.mp4"><img src="examples/p-layer-demo.gif" width="640" alt="p-layer 데모 — 거부의 순간"></a>
 
-*핵심 장면: 에이전트가 P0 규칙을 바꾸려 한다 → 게이트가 **거부**(사람 승인 필요) → 승인 → 적용 + 감사.*
+*핵심 장면: 에이전트가 P0 규칙을 바꾸려 한다 → 게이트가 **거부**(사람 승인 필요) → 승인 → 적용 + 감사. 클릭하면 전체 26초 영상.*
