@@ -175,6 +175,14 @@ MIT
 
 ## Demo
 
-<img src="examples/p-layer-demo.gif" width="640" alt="p-layer demo — real CLI: remember → recall → gate propose → **refused** → approve → applied">
+### Agent conversation (generic agent, no brand)
 
-*Real terminal replay: the agent tries to change a P0 rule and the gate **refuses** (`ok: false — only approved can be applied`) until a human approves. Every write is audited.*
+<img src="examples/p-layer-chat-demo.gif" width="620" alt="p-layer demo — agent recalls past decisions and gets refused when trying to change a rule">
+
+*The agent remembers across sessions (`recall`), and when it tries to change a rule the system **refuses** until a human approves — then it's applied and audited.*
+
+### Memory health report (real data)
+
+<img src="examples/memory-health-dashboard.png" width="620" alt="p-layer memory health dashboard — real metrics from a production agent stack">
+
+*A weekly health report: is the memory actually being distilled? Are rules alive? Are there silent failures? (Real numbers from a production agent stack.)*
