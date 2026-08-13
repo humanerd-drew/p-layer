@@ -11,7 +11,7 @@
 
 ## Demo
 
-### Agent conversation (generic agent, no brand)
+### Agent conversation
 
 <img src="examples/p-layer-chat-demo.gif" width="620" alt="p-layer demo — agent recalls past decisions and gets refused when trying to change a rule">
 
