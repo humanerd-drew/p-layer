@@ -88,15 +88,20 @@ def _load_proposal(pid: str, proposals_dir: Path | None = None) -> dict | None:
 
 
 def propose(pid: str, entry_type: str, space: str, title: str, file: str,
-            source: str, links: str = "", proposals_dir: Path | None = None) -> dict:
-    """Create a proposal. Returns {"ok", "message"}."""
+            source: str, links: str = "", target: str = "",
+            proposals_dir: Path | None = None) -> dict:
+    """Create a proposal. Returns {"ok", "message"}.
+
+    ``target`` (optional) sets the ontology entry id the proposal acts on —
+    used by retire proposals where the proposal id differs from the entry id.
+    """
     d = proposals_dir or PROPOSALS_DIR
     if not pid or "/" in pid or "\\" in pid:
         return {"ok": False, "message": "id must be non-empty without path separators"}
     if _load_proposal(pid, d):
         return {"ok": False, "message": f"proposal {pid!r} already exists (no re-propose)"}
     entry = {
-        "id": pid,
+        "id": target or pid,
         "type": entry_type,
         "space": space,
         "title": title,
@@ -182,6 +187,49 @@ def apply(pid: str, ontology_path: Path | None = None, proposals_dir: Path | Non
     _transition(pid, "applied", proposals_dir)
     doc = _load_proposal(pid, proposals_dir)  # refresh for return
     return {"ok": True, "message": f"{pid} applied (id {entry['id']})"}
+
+
+def retire(pid: str, ontology_path: Path | None = None, proposals_dir: Path | None = None) -> dict:
+    """Remove an ontology entry through the approval gate (2026-08-13).
+
+    Same governance as ``apply``: only an approved proposal may remove a line.
+    The proposal's ``entry.id`` (or ``target``) names the line to remove;
+    ``source_ref`` preserves the removal reason. Idempotent — a missing id is
+    a no-op, and an already-applied proposal is not re-processed.
+    """
+    doc = _load_proposal(pid, proposals_dir)
+    if doc is None:
+        return {"ok": False, "message": f"proposal {pid!r} not found"}
+    if doc.get("status") == "applied":
+        return {"ok": True, "message": f"{pid} already applied (no-op, no double retire)"}
+    if doc.get("status") != "approved":
+        return {"ok": False, "message": f"{pid} is {doc.get('status')} — only approved can retire (human gate)"}
+    entry = doc.get("entry")
+    if not isinstance(entry, dict) or not entry.get("id"):
+        return {"ok": False, "message": f"{pid} entry malformed"}
+    target = entry["id"]
+    path = ontology_path or ONTOLOGY
+    if not path.exists():
+        return {"ok": False, "message": f"ontology file missing: {path}"}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    kept, removed = [], 0
+    for raw in lines:
+        if not raw.strip():
+            continue
+        try:
+            existing = json.loads(raw)
+        except json.JSONDecodeError:
+            kept.append(raw)
+            continue
+        if isinstance(existing, dict) and existing.get("id") == target:
+            removed += 1
+            continue
+        kept.append(raw)
+    if removed == 0:
+        return {"ok": True, "message": f"id {target!r} not in ontology — no-op (already removed?)"}
+    path.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+    _transition(pid, "applied", proposals_dir)
+    return {"ok": True, "message": f"{target} removed ({removed} line(s), proposal {pid})"}
 
 
 def fresh(ontology_path: Path | None = None, proposals_dir: Path | None = None) -> dict:

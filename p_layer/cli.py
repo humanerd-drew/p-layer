@@ -111,6 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
     gt_sub.add_parser("fresh", help="freshness: last modified + open proposals (read-only)")
     gp = gt_sub.add_parser("propose", help="create a proposal (status=proposed)")
     gp.add_argument("--id", required=True)
+    gp.add_argument("--target", default="", help="ontology entry id to act on (retire proposals)")
     gp.add_argument("--type", required=True, choices=["document", "policy", "neuron"])
     gp.add_argument("--space", required=True)
     gp.add_argument("--title", required=True)
@@ -123,6 +124,8 @@ def build_parser() -> argparse.ArgumentParser:
     gapp.add_argument("id")
     gd = gt_sub.add_parser("deprecate", help="deprecate an applied/approved proposal")
     gd.add_argument("id")
+    gr = gt_sub.add_parser("retire", help="remove an ontology entry through the approval gate")
+    gr.add_argument("id")
 
     dr = sub.add_parser("drift-report", help="weekly drift report (read-only, baseline comparison)")
     dr.add_argument("--baseline-dir", default=None)
@@ -268,13 +271,16 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(gate_mod.fresh(), ensure_ascii=False, indent=2))
         elif args.gate_cmd == "propose":
             print(json.dumps(gate_mod.propose(args.id, args.type, args.space, args.title,
-                                              args.file, args.source, args.links), ensure_ascii=False, indent=2))
+                                              args.file, args.source, args.links,
+                                              target=args.target), ensure_ascii=False, indent=2))
         elif args.gate_cmd == "approve":
             print(json.dumps(gate_mod.approve(args.id), ensure_ascii=False, indent=2))
         elif args.gate_cmd == "apply":
             print(json.dumps(gate_mod.apply(args.id), ensure_ascii=False, indent=2))
         elif args.gate_cmd == "deprecate":
             print(json.dumps(gate_mod.deprecate(args.id), ensure_ascii=False, indent=2))
+        elif args.gate_cmd == "retire":
+            print(json.dumps(gate_mod.retire(args.id), ensure_ascii=False, indent=2))
         return 0
 
     if args.cmd == "drift-report":

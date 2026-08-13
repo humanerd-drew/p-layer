@@ -67,6 +67,18 @@ class GateTests(unittest.TestCase):
         r = gate.propose("../../etc/x", "policy", "s", "t", "f", "src", proposals_dir=self.props)
         self.assertFalse(r["ok"])
 
+    def test_retire_requires_approval_and_removes(self):
+        # retire 는 승인 없이 불가 (사람 게이트)
+        gate.propose("dup-retire", "policy", "s", "t", "f", "dup-of-r1", target="r1",
+                     proposals_dir=self.props)
+        self.assertFalse(gate.retire("dup-retire", **self._gate())["ok"])  # proposed → 거부
+        gate.approve("dup-retire", proposals_dir=self.props)
+        r = gate.retire("dup-retire", **self._gate())
+        self.assertTrue(r["ok"])
+        self.assertEqual(gate.validate(self.onto)["count"], 0)  # r1 제거됨
+        # 멱등: 재-retire no-op
+        self.assertTrue(gate.retire("dup-retire", **self._gate())["ok"])
+
     def test_fresh(self):
         r = gate.fresh(self.onto, self.props)
         self.assertTrue(r["ok"])
