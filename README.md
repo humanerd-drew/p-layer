@@ -184,3 +184,8 @@ Built as a production-grade rebuild of the P0-P6 vault concept from [opencode-dr
 ## License
 
 MIT
+
+## Links
+
+- Author: [humanerd (휴머너드)](https://humanerd.kr) — building AI agent systems, automation pipelines, and the record of breaking & fixing both.
+- Blog: [humanerd.kr](https://humanerd.kr) — agent systems, GEO/SEO engineering, build logs.
