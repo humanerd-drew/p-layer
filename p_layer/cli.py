@@ -105,6 +105,28 @@ def build_parser() -> argparse.ArgumentParser:
     co.add_argument("--min-episodes", type=int, default=3)
     co.add_argument("--dry-run", action="store_true")
 
+    gt = sub.add_parser("gate", help="P0 ontology review gate (validate/propose/approve/apply/deprecate/fresh)")
+    gt_sub = gt.add_subparsers(dest="gate_cmd", required=True)
+    gt_sub.add_parser("validate", help="validate ontology JSONL (read-only)")
+    gt_sub.add_parser("fresh", help="freshness: last modified + open proposals (read-only)")
+    gp = gt_sub.add_parser("propose", help="create a proposal (status=proposed)")
+    gp.add_argument("--id", required=True)
+    gp.add_argument("--type", required=True, choices=["document", "policy", "neuron"])
+    gp.add_argument("--space", required=True)
+    gp.add_argument("--title", required=True)
+    gp.add_argument("--file", required=True)
+    gp.add_argument("--source", required=True)
+    gp.add_argument("--links", default="")
+    ga = gt_sub.add_parser("approve", help="approve a proposal (human gate)")
+    ga.add_argument("id")
+    gapp = gt_sub.add_parser("apply", help="apply an approved proposal to the ontology (idempotent)")
+    gapp.add_argument("id")
+    gd = gt_sub.add_parser("deprecate", help="deprecate an applied/approved proposal")
+    gd.add_argument("id")
+
+    dr = sub.add_parser("drift-report", help="weekly drift report (read-only, baseline comparison)")
+    dr.add_argument("--baseline-dir", default=None)
+
     sn = sub.add_parser("snapshot", help="snapshot create/rollback")
     sn_sub = sn.add_subparsers(dest="snapshot_cmd", required=True)
     sc = sn_sub.add_parser("create")
@@ -235,6 +257,28 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "consolidate":
         print(json.dumps(store.consolidate(min_episodes=args.min_episodes, dry_run=args.dry_run),
+                         ensure_ascii=False, indent=2))
+        return 0
+
+    if args.cmd == "gate":
+        from . import gate as gate_mod
+        if args.gate_cmd == "validate":
+            print(json.dumps(gate_mod.validate(), ensure_ascii=False, indent=2))
+        elif args.gate_cmd == "fresh":
+            print(json.dumps(gate_mod.fresh(), ensure_ascii=False, indent=2))
+        elif args.gate_cmd == "propose":
+            print(json.dumps(gate_mod.propose(args.id, args.type, args.space, args.title,
+                                              args.file, args.source, args.links), ensure_ascii=False, indent=2))
+        elif args.gate_cmd == "approve":
+            print(json.dumps(gate_mod.approve(args.id), ensure_ascii=False, indent=2))
+        elif args.gate_cmd == "apply":
+            print(json.dumps(gate_mod.apply(args.id), ensure_ascii=False, indent=2))
+        elif args.gate_cmd == "deprecate":
+            print(json.dumps(gate_mod.deprecate(args.id), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.cmd == "drift-report":
+        print(json.dumps(store.drift_report(baseline_dir=args.baseline_dir),
                          ensure_ascii=False, indent=2))
         return 0
 

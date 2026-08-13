@@ -977,3 +977,88 @@ class Store:
             digests += 1
             covered += len(eps)
         return {"digests": digests, "episodes_covered": covered, "skipped": skipped, "dry_run": dry_run}
+
+    # ── drift report (read-only) ────────────────────────────────
+    def drift_report(self, baseline_dir: str | os.PathLike | None = None,
+                     ontology_path: str | os.PathLike | None = None,
+                     proposals_dir: str | os.PathLike | None = None) -> dict:
+        """Weekly drift report over the store's own data + P0 gate state.
+
+        Metrics: knowledge/episodes/entities/relations/rules counts (7d + total)
+        and the P0 ontology gate state (entries, open proposals). First run
+        snapshots a baseline; later runs compare and flag metrics beyond
+        ±DRIFT_PCT. Never modifies the store. Returns
+        {"status": "no change"|"drift"|"failure", "path", "deltas", "metrics"}.
+        """
+        from . import gate as gate_mod
+
+        dr = Path(baseline_dir) if baseline_dir else Path.cwd() / "p1-drift"
+        dr.mkdir(parents=True, exist_ok=True)
+        base_file = dr / "baseline.json"
+
+        def count(sql: str, *args):
+            try:
+                return self.db.execute(sql, args).fetchone()[0]
+            except sqlite3.Error:
+                return None
+
+        now_7d = "datetime('now','-7 days')"
+        metrics = {
+            "knowledge_total": count(f"SELECT COUNT(*) FROM knowledge"),
+            "knowledge_7d": count(f"SELECT COUNT(*) FROM knowledge WHERE created_at >= {now_7d}"),
+            "episodes_7d": count(f"SELECT COUNT(*) FROM episodes WHERE created_at >= {now_7d}"),
+            "entities": count("SELECT COUNT(*) FROM entities"),
+            "relations": count("SELECT COUNT(*) FROM relations"),
+            "rules": count("SELECT COUNT(*) FROM rules"),
+        }
+        gf = gate_mod.fresh(Path(ontology_path) if ontology_path else None,
+                            Path(proposals_dir) if proposals_dir else None)
+        metrics["p0_entries"] = gf.get("entries")
+        metrics["p0_open_proposals"] = gf.get("open_proposals")
+
+        optional = {"p0_entries", "p0_open_proposals"}
+        failures = [k for k, v in metrics.items() if v is None and k not in optional]
+        if failures:
+            return {"status": "failure", "metrics": metrics, "deltas": [],
+                    "path": None, "unreadable": failures}
+
+        baseline = {}
+        try:
+            if base_file.exists():
+                d = json.loads(base_file.read_text(encoding="utf-8"))
+                if isinstance(d, dict):
+                    baseline = d.get("metrics", {})
+        except (OSError, json.JSONDecodeError):
+            baseline = {}
+
+        def delta(cur, base):
+            if cur is None or base is None:
+                return None
+            if not isinstance(cur, (int, float)) or not isinstance(base, (int, float)):
+                return None
+            if base == 0:
+                return 100.0 if cur else 0.0
+            return round(100.0 * (cur - base) / abs(base), 1)
+
+        if not baseline:
+            base_file.write_text(
+                json.dumps({"created_at": utcnow(), "metrics": metrics}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            status, deltas = "no change", []
+        else:
+            deltas = [
+                {"metric": k, "base": baseline.get(k), "cur": metrics.get(k), "delta_pct": delta(metrics.get(k), baseline.get(k))}
+                for k in metrics
+                if k in baseline and (d := delta(metrics.get(k), baseline.get(k))) is not None and abs(d) > 30
+            ]
+            status = "drift" if deltas else "no change"
+
+        path = dr / f"weekly-{utcnow()[:10]}.md"
+        lines = [f"# Drift Report — {utcnow()[:10]}", "",
+                 f"**Status**: {'drift' if status == 'drift' else 'no change'}", "",
+                 "| metric | baseline | current | delta |", "|---|---|---|---|"]
+        for k in metrics:
+            lines.append(f"| {k} | {baseline.get(k)} | {metrics.get(k)} | {delta(metrics.get(k), baseline.get(k))}% |")
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return {"status": status, "path": str(path), "deltas": deltas, "metrics": metrics}
