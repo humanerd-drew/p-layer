@@ -9,6 +9,13 @@
 
 🌏 [README.ko.md](README.ko.md) — 한국어
 
+## Demo (26s)
+
+<video src="examples/p-layer-demo.mp4" width="640" controls></video>
+
+*The moment that matters: an agent tries to change a P0 rule → the gate **refuses** (human approval required) → approval → applied + audited.*
+
+
 AI assistants today are brilliant and forgetful. When a conversation ends, what was decided in it — which payment system you switched to, how a client prefers to be contacted, what actually fixed a bug — ends with it. The next session starts from zero. And when an agent *does* keep notes, there is no control: anyone can write anything, rules are suggestions, and nothing is ever traced.
 
 p-layer gives an agent a memory that works like a well-run organization instead of a junk drawer:
