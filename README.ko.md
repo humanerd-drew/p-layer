@@ -2,6 +2,13 @@
 
 **AI 에이전트를 위한, "저장만 되는" 것이 아니라 "규칙이 지켜지는" 메모리.**
 
+[![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
+[![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-154%20passed-green)](README.md)
+
+🌏 [README.md](README.md) — English
+
 AI 비서는 똑똑하지만 건망증이 심하다. 대화가 끝나면 그 대화에서 정한 것들 — 결제 시스템을 어떤 걸로 바꿨는지, 거래처가 원하는 연락 방식, 버그를 실제로 고친 방법 — 도 함께 사라진다. 다음 세션은 빈 종이에서 시작한다. 그리고 에이전트가 메모를 *남기기 시작하면* 통제가 없다: 누구나 아무거나 쓸 수 있고, 규칙은 제안일 뿐이며, 아무것도 추적되지 않는다.
 
 p-layer는 에이전트에게 "잘 운영되는 조직"처럼 작동하는 메모리를 준다 — 잡동사니 서랍이 아니라:
@@ -147,7 +154,7 @@ p-layer assemble             # 규칙 + 최근 메모리 — 컨텍스트로 바
 - **거버넌스와 드리프트 (0.7.0)**: `gate`(P0 온톨로지 리뷰 게이트 — propose → approve → apply/deprecate, 사람 승인 필수, 멱등, JSONL 검증)와 `drift-report`(지식/에피소드/엔티티/게이트 상태 기준 주간 baseline 비교; 읽기 전용, 변경 없음과 실패를 구분).
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — 동일 인터페이스·동작, 공유 패리티 스위트로 검증 (CJK 대응 pg_trgm ILIKE, pgvector 선택).
 - **MCP 서버**: 13개 툴, 의존성 0 stdio 구현, 와이어 레벨 테스트로 엔드투엔드 검증 (CI에서 공식 SDK로도).
-- **drewgent 통합**: `import-drewgent`는 레거시 drewgent `knowledge.db`(knowledge/entities/relations/sessions 테이블)를 p_layer 스토어로 이식한다. `p_layer.drewdb`는 라이브 drew.db 형식 데이터베이스를 관리형 커넥션(WAL, busy timeout, `p_layer_meta` 레지스트리)으로 열어, 기존 agentmemory 서버가 스키마와 툴을 유지한 채 p_layer가 커넥션을 관리하게 한다. `import-rules` / `import-incidents`는 볼트 파일을 이식한다.
+- **기존 에이전트 기억에서 마이그레이션**: 이미 운영 중인 에이전트 기억 저장소가 있다면, `import-drewgent`가 기존 `knowledge.db`(knowledge/entities/relations/sessions)를 p_layer로 복사하고, `p_layer.drewdb`는 그 데이터베이스를 p_layer 거버넌스(WAL, busy timeout) 아래 **그 자리에서 열어** 기존 도구를 그대로 쓰면서 p_layer가 연결을 관리하게 한다. `import-rules` / `import-incidents`는 기존 규칙·사건 파일을 이식한다. 준비됐을 때 옮기면 된다 — 잠기지 않는다.
 - **테스트**: 156개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · 패키지: **`p_layer`** · 콘솔: **`p-layer`**
 
@@ -157,8 +164,17 @@ python3 -m unittest discover -s tests -v   # 의존성·네트워크 없음
 
 ## 크레딧
 
-[opencode-drewgent](https://github.com/humanerd-drew/opencode-drewgent)의 P0-P6 볼트 개념과 [p-layer](https://github.com/humanerd-drew/p-layer)의 레이어 권한/ACL 설계, [Gajae-Code](https://github.com/Yeachan-Heo/gajae-code)의 오케스트레이션 관례를 프로덕션급으로 재건한 것입니다. 이 프로젝트를 만들게 한 비판적 평가는 위 본문에, 좋은 아이디어의 출처는 이 크레딧에 있습니다.
+[opencode-drewgent](https://github.com/humanerd-drew/opencode-drewgent)의 P0-P6 볼트 개념과 [Gajae-Code](https://github.com/Yeachan-Heo/gajae-code)의 오케스트레이션 관례를 프로덕션급으로 재건한 것입니다.
 
 ## 라이선스
 
 MIT
+
+
+---
+
+## Demo (26초)
+
+<video src="examples/p-layer-demo.mp4" width="640" controls></video>
+
+*핵심 장면: 에이전트가 P0 규칙을 바꾸려 한다 → 게이트가 **거부**(사람 승인 필요) → 승인 → 적용 + 감사.*
