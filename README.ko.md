@@ -144,6 +144,7 @@ p-layer assemble             # 규칙 + 최근 메모리 — 컨텍스트로 바
 - **회상**: FTS5 + 시맨틱 하이브리드, RRF 퓨전, confidence × freshness 랭킹, superseded 제외, 타입 다양화.
 - **그래프**: 타입이 있는 엔티티/관계 온톨로지 + 제약 검증, explore / trace / 근본 원인 분석 / 전이 폐포 (사이클 안전).
 - **운영 잡**: `reembed`(버전관리 벡터 백필), `consolidate`(episodic → semantic 다이제스트), `compile-wiki`(P5 페이지). SQLite 전용, PostgreSQL에서는 조용히 망가지지 않고 명시적으로 거부.
+- **거버넌스와 드리프트 (0.7.0)**: `gate`(P0 온톨로지 리뷰 게이트 — propose → approve → apply/deprecate, 사람 승인 필수, 멱등, JSONL 검증)와 `drift-report`(지식/에피소드/엔티티/게이트 상태 기준 주간 baseline 비교; 읽기 전용, 변경 없음과 실패를 구분).
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — 동일 인터페이스·동작, 공유 패리티 스위트로 검증 (CJK 대응 pg_trgm ILIKE, pgvector 선택).
 - **MCP 서버**: 13개 툴, 의존성 0 stdio 구현, 와이어 레벨 테스트로 엔드투엔드 검증 (CI에서 공식 SDK로도).
 - **drewgent 통합**: `import-drewgent`는 레거시 drewgent `knowledge.db`(knowledge/entities/relations/sessions 테이블)를 p_layer 스토어로 이식한다. `p_layer.drewdb`는 라이브 drew.db 형식 데이터베이스를 관리형 커넥션(WAL, busy timeout, `p_layer_meta` 레지스트리)으로 열어, 기존 agentmemory 서버가 스키마와 툴을 유지한 채 p_layer가 커넥션을 관리하게 한다. `import-rules` / `import-incidents`는 볼트 파일을 이식한다.
