@@ -2,6 +2,8 @@
 
 **Memory for AI agents with rules that are kept, not just written.**
 
+🌏 [README.ko.md](README.ko.md) — 한국어
+
 AI assistants today are brilliant and forgetful. When a conversation ends, what was decided in it — which payment system you switched to, how a client prefers to be contacted, what actually fixed a bug — ends with it. The next session starts from zero. And when an agent *does* keep notes, there is no control: anyone can write anything, rules are suggestions, and nothing is ever traced.
 
 p-layer gives an agent a memory that works like a well-run organization instead of a junk drawer:
@@ -157,7 +159,7 @@ python3 -m unittest discover -s tests -v   # no dependencies, no network
 
 ## Credits
 
-Built as a production-grade rebuild of ideas from [opencode-drewgent](https://github.com/humanerd-drew/opencode-drewgent) (the P0-P6 vault concept) and [p-layer](https://github.com/humanerd-drew/p-layer) (layer authority/ACL design), with orchestration conventions from [Gajae-Code](https://github.com/Yeachan-Heo/gajae-code). The critique that motivated this project is in the section above; the good ideas came from these projects.
+Built as a production-grade rebuild of the P0-P6 vault concept from [opencode-drewgent](https://github.com/humanerd-drew/opencode-drewgent), with orchestration conventions from [Gajae-Code](https://github.com/Yeachan-Heo/gajae-code).
 
 ## License
 
