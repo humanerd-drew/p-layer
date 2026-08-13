@@ -175,6 +175,6 @@ MIT
 
 ## Demo
 
-<a href="examples/p-layer-demo.mp4"><img src="examples/p-layer-demo.gif" width="640" alt="p-layer 데모 — 거부의 순간"></a>
+<img src="examples/p-layer-demo.gif" width="640" alt="p-layer demo — real CLI: remember → recall → gate propose → **refused** → approve → applied">
 
-*핵심 장면: 에이전트가 P0 규칙을 바꾸려 한다 → 게이트가 **거부**(사람 승인 필요) → 승인 → 적용 + 감사. 클릭하면 전체 26초 영상.*
+*Real terminal replay: the agent tries to change a P0 rule and the gate **refuses** (`ok: false — only approved can be applied`) until a human approves. Every write is audited.*

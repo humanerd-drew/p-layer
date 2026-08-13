@@ -11,9 +11,9 @@
 
 ## Demo
 
-<a href="examples/p-layer-demo.mp4"><img src="examples/p-layer-demo.gif" width="640" alt="p-layer demo — the refusal moment"></a>
+<img src="examples/p-layer-demo.gif" width="640" alt="p-layer demo — real CLI: remember → recall → gate propose → **refused** → approve → applied">
 
-*The moment that matters: an agent tries to change a P0 rule → the gate **refuses** (human approval required) → approval → applied + audited. Click for the full 26s video.*
+*Real terminal replay: the agent tries to change a P0 rule and the gate **refuses** (`ok: false — only approved can be applied`) until a human approves. Every write is audited.*
 
 
 AI assistants today are brilliant and forgetful. When a conversation ends, what was decided in it — which payment system you switched to, how a client prefers to be contacted, what actually fixed a bug — ends with it. The next session starts from zero. And when an agent *does* keep notes, there is no control: anyone can write anything, rules are suggestions, and nothing is ever traced.
