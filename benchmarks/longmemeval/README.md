@@ -125,6 +125,31 @@ python3 LongMemEval/src/evaluation/print_qa_metrics.py \
 
 ## Scope notes
 
+### Same-harness competitor comparison (Mem0 OSS) — pilot + feasibility finding
+
+`run_mem0.py` runs the identical protocol against Mem0 OSS (in-process SDK,
+DeepSeek LLM, ollama bge-m3 embedder, Qdrant vector store). What the pilot
+(3 questions, session-granularity ingest, k=10) established:
+
+| system | session recall@10 | note |
+|---|---|---|
+| p-layer (same 3 questions, session gran.) | **1.0000** (MRR 0.83) | runs in seconds, offline |
+| Mem0 OSS (deepseek-v4-flash) | 0.0000 | **answer sessions never ingested** |
+
+Mem0's 0.0 is an ingestion artifact, not a retrieval verdict: at ~19 s per
+session add (LLM extraction) and ~57% of sessions dropped by malformed
+JSON from the only working LLM here (deepseek; the OpenAI key on this
+machine is revoked), the evidence sessions were never stored — a full
+500-question run needs days of extraction calls. Mem0's published LongMemEval
+numbers come from their cloud pipeline and are not reproducible with the
+OSS stack plus a substitute LLM.
+
+Deliverable: a working, checkpointed mem0 harness (`run_mem0.py`) plus this
+feasibility evidence. A fair Mem0 same-harness score requires their cloud
+(or a reliable OpenAI-key LLM) — tracked as follow-up. Basic Memory (local,
+no LLM) is the other candidate; its batch interface is MCP/CLI-oriented and
+was not wired up in this pass (see playbook).
+
 - The QA lane (`--generate`) requires an explicit `--model` and is refused
   otherwise: the official harness contract is gpt-4o and the model is never
   substituted. Runs are checkpoint-resume-safe for both retrieval and QA.
