@@ -491,10 +491,16 @@ class Store:
 
     # ── read path ─────────────────────────────────────────────
     def fts_search(self, query: str, limit: int = 30) -> list[dict]:
-        terms = [w for w in query.split() if len(w) > 1]
+        # Sanitize FTS5 query-syntax characters out of each term: a bare
+        # "?" (e.g. a trailing question mark in a real agent query) or a
+        # FTS5 keyword (OR/AND/NOT/NEAR) makes the whole MATCH expression
+        # raise, which used to silently degrade recall to a single-phrase
+        # LIKE that almost never matched. Terms are quoted so keyword
+        # collisions stay valid queries.
+        terms = [t for t in (re.sub(r"[^\w]+", "", w) for w in query.split()) if len(t) > 1]
         if not terms:
             return []
-        match = " OR ".join(terms)
+        match = " OR ".join(f'"{t}"' for t in terms)
         db = self.db
         try:
             rows = db.execute(
@@ -503,11 +509,14 @@ class Store:
                 (match, limit),
             ).fetchall()
         except sqlite3.OperationalError:
-            like = "%" + " ".join(terms) + "%"
+            # CJK path: unicode61 does not split CJK into words, so MATCH can
+            # never hit there — fall back to per-term LIKE OR (multi-term
+            # recall instead of the old never-matching single phrase).
+            clauses = " OR ".join("k.content LIKE ?" for _ in terms)
             rows = db.execute(
                 f"SELECT {_KNOWLEDGE_COLS} FROM knowledge k "
-                "WHERE k.content LIKE ? AND k.superseded_by IS NULL LIMIT ?",
-                (like, limit),
+                f"WHERE ({clauses}) AND k.superseded_by IS NULL LIMIT ?",
+                [f"%{t}%" for t in terms] + [limit],
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -553,7 +562,7 @@ class Store:
         confidence and freshness, type-diversified. Superseded entries excluded."""
         emb = self._get_embedder()
         if use_semantic is None:
-            use_semantic = emb is not None and emb.available()
+            use_semantic = emb is not None and emb.available() and emb.semantic
         fts = self.fts_search(query, limit * 3)
         sem = self.semantic_search(query, limit * 3) if use_semantic else []
         out = self._rrf_fuse(fts, sem, limit)

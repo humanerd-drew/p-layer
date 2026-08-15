@@ -609,7 +609,8 @@ class PgStore:
     def recall(self, query: str, limit: int = 10, use_semantic: bool | None = None,
                serendipity: bool = False) -> list[dict]:
         if use_semantic is None:
-            use_semantic = self.semantic_available and self._get_embedder() is not None
+            emb = self._get_embedder()
+            use_semantic = self.semantic_available and emb is not None and emb.semantic
         fts = self.fts_search(query, limit * 3)
         sem = self.semantic_search(query, limit * 3) if use_semantic else []
         out = rrf_fuse(fts, sem, limit, self._rows_by_ids)

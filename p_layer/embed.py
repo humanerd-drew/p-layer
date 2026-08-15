@@ -26,6 +26,10 @@ class Embedder:
     model = ""
     embedding_version = "base-1"
     dimensions = 0
+    # Whether embeddings carry real semantics. Fake/fallback embedders
+    # (e.g. deterministic random vectors) must set False so hybrid recall
+    # defaults to FTS-only instead of fusing noise (see HashEmbedder).
+    semantic = True
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         raise NotImplementedError
@@ -75,6 +79,7 @@ class HashEmbedder(Embedder):
     """
 
     name = "hash"
+    semantic = False  # fusing these vectors hurts recall; FTS-only by default
 
     def __init__(self, dimensions: int = 64):
         self.model = "hash-fallback"
