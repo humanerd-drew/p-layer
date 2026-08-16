@@ -125,30 +125,30 @@ python3 LongMemEval/src/evaluation/print_qa_metrics.py \
 
 ## Scope notes
 
-### Same-harness competitor comparison (Mem0 OSS) — pilot + feasibility finding
+### Same-harness competitor comparison — Mem0 pilot + Basic Memory (both local/zero-cost where noted)
 
-`run_mem0.py` runs the identical protocol against Mem0 OSS (in-process SDK,
-DeepSeek LLM, ollama bge-m3 embedder, Qdrant vector store). What the pilot
-(3 questions, session-granularity ingest, k=10) established:
+`run_mem0.py` (Mem0 OSS) and `run_basic_memory.py` (Basic Memory, fully
+local — no LLM, no API cost) run the identical protocol. Same 20 questions,
+session-granularity ingest, k=10:
 
-| system | session recall@10 | note |
-|---|---|---|
-| p-layer (same 3 questions, session gran.) | **1.0000** (MRR 0.83) | runs in seconds, offline |
-| Mem0 OSS (deepseek-v4-flash) | 0.0000 | **answer sessions never ingested** |
+| system | session recall@10 | MRR | cost |
+|---|---|---|---|
+| **p-layer** (hash, FTS-only) | **1.0000** | 0.9500 | 0 (offline) |
+| p-layer (bge-m3, ollama) | 0.9500 | 0.8083 | 0 (offline) |
+| Basic Memory (local FTS+vector) | 0.8000 | 0.4255 | 0 (local) |
+| Mem0 OSS (deepseek, 3q pilot) | 0.0000 | — | LLM extraction (paid) |
 
-Mem0's 0.0 is an ingestion artifact, not a retrieval verdict: at ~19 s per
-session add (LLM extraction) and ~57% of sessions dropped by malformed
-JSON from the only working LLM here (deepseek; the OpenAI key on this
-machine is revoked), the evidence sessions were never stored — a full
-500-question run needs days of extraction calls. Mem0's published LongMemEval
-numbers come from their cloud pipeline and are not reproducible with the
-OSS stack plus a substitute LLM.
+Basic Memory loses to p-layer on both recall (+0.20) and ranking quality
+(MRR 2.2x). Mem0's 0.0 is an ingestion artifact, not a retrieval verdict:
+at ~19 s/session LLM extraction and ~57% of sessions dropped by malformed
+JSON from the only working LLM here (deepseek; the OpenAI key is revoked),
+the evidence sessions were never stored — a full 500-question run needs days
+of extraction calls. Mem0's published LongMemEval numbers come from their
+cloud pipeline and are not reproducible on OSS with a substitute LLM.
 
-Deliverable: a working, checkpointed mem0 harness (`run_mem0.py`) plus this
-feasibility evidence. A fair Mem0 same-harness score requires their cloud
-(or a reliable OpenAI-key LLM) — tracked as follow-up. Basic Memory (local,
-no LLM) is the other candidate; its batch interface is MCP/CLI-oriented and
-was not wired up in this pass (see playbook).
+Deliverables: checkpointed `run_mem0.py` (needs a reliable LLM to be fair)
+and `run_basic_memory.py` (works today, zero cost). A fair Mem0 same-harness
+score requires their cloud — tracked as follow-up.
 
 - The QA lane (`--generate`) requires an explicit `--model` and is refused
   otherwise: the official harness contract is gpt-4o and the model is never
