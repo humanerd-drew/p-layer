@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
 [![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-154%20passed-green)](README.md)
+[![Tests](https://img.shields.io/badge/tests-158%20passed-green)](README.md)
 
 **Memory for AI agents with rules that are kept, not just written.**
 
@@ -170,7 +170,7 @@ Agents talk to memory through **MCP**, the standard connector. Add one block to 
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — same interface and behavior, verified by a shared parity suite (pg_trgm ILIKE for CJK, pgvector optional).
 - **MCP server**: 13 tools, zero-dependency stdio implementation, verified end-to-end by wire-level tests (and against the official SDK in CI).
 - **Migration from legacy agent memory**: already running an agent memory store? `import-drewgent` copies a legacy `knowledge.db` (knowledge/entities/relations/sessions) into p_layer, and `p_layer.drewdb` can even *open it in place* under p_layer's governance (WAL, busy timeout) so your existing tools keep working while p_layer takes over the connection. `import-rules` / `import-incidents` bring your existing rule and incident files in. You migrate when you're ready — nothing is locked in.
-- **Tests**: 156 — SQLite + PostgreSQL parity, governance, graph, ops, MCP wire, packaging.
+- **Tests**: 158 — SQLite + PostgreSQL parity, governance, graph, ops, MCP wire, packaging, FTS5 query sanitization regressions.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · package: **`p_layer`** · console: **`p-layer`**
 
 ```bash
