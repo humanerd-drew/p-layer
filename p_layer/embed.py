@@ -39,7 +39,7 @@ class Embedder:
 
 
 class OllamaEmbedder(Embedder):
-    """Local embeddings via Ollama /api/embeddings."""
+    """Local embeddings via Ollama /api/embed (batch) with /api/embeddings fallback."""
 
     name = "ollama"
 
@@ -49,8 +49,47 @@ class OllamaEmbedder(Embedder):
         self.embedding_version = f"ollama-{self.model}"
         self.dimensions = 0  # set from first response
         self.timeout = timeout
+        self._batch_supported: bool | None = None  # None = unknown, try batch first
 
     def embed(self, texts: list[str]) -> list[list[float]]:
+        # Try batch endpoint first (/api/embed accepts {"input": [...]})
+        if self._batch_supported is not False:
+            try:
+                return self._embed_batch(texts)
+            except EmbeddingError:
+                if self._batch_supported is None:
+                    # First attempt failed — fall back to single-text endpoint
+                    self._batch_supported = False
+                else:
+                    raise
+
+        # Fallback: per-text /api/embeddings (older Ollama versions)
+        return self._embed_single(texts)
+
+    def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Ollama /api/embed — accepts multiple texts in one request."""
+        data = json.dumps({"model": self.model, "input": texts}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.host}/api/embed",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                body = json.loads(resp.read())
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError, json.JSONDecodeError) as exc:
+            raise EmbeddingError(f"ollama batch embedding failed: {exc}") from exc
+        embeddings = body.get("embeddings")
+        if not embeddings or len(embeddings) != len(texts):
+            raise EmbeddingError(f"ollama /api/embed returned {len(embeddings or [])} vectors for {len(texts)} texts")
+        out = [[float(x) for x in vec] for vec in embeddings]
+        if not self.dimensions:
+            self.dimensions = len(out[0])
+        self._batch_supported = True
+        return out
+
+    def _embed_single(self, texts: list[str]) -> list[list[float]]:
+        """Ollama /api/embeddings — one text per request (legacy fallback)."""
         out = []
         for text in texts:
             data = json.dumps({"model": self.model, "prompt": text}).encode("utf-8")

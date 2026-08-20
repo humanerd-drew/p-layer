@@ -642,7 +642,7 @@ class Store:
 
     def semantic_search(self, query: str, limit: int = 30) -> list[tuple[float, int]]:
         emb = self._get_embedder()
-        if emb is None or not emb.available() or not emb.dimensions:
+        if emb is None or not emb.available():
             return []
         try:
             qvec = emb.embed([query])[0]
