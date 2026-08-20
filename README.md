@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
 [![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-158%20passed-green)](README.md)
+[![Tests](https://img.shields.io/badge/tests-163%20passed-green)](README.md)
 
 **Memory for AI agents with rules that are kept, not just written.**
 
@@ -163,19 +163,83 @@ Agents talk to memory through **MCP**, the standard connector. Add one block to 
 
 - **Engine**: `p_layer.store.Store` — SQLite + FTS5 + pluggable embeddings, forward-only checksummed migrations. One schema, one implementation.
 - **Governance**: P0-P6 layer ACLs enforced at write time (`WriteDenied`), supersede-not-delete, snapshots/rollback, full audit log, contradiction scan.
-- **Recall**: hybrid FTS5 + semantic, RRF fusion, ranked by confidence × freshness, superseded excluded, type-diversified.
+- **Recall**: hybrid FTS5 + semantic, RRF fusion, additive rerank (confidence + recency + TTL boosts), superseded excluded, type-diversified.
 - **Graph**: typed entity/relation ontology with constraint validation, explore / trace / root-cause analysis / transitive closure (cycle-safe).
 - **Ops jobs**: `reembed` (versioned vector backfill), `consolidate` (episodic → semantic digests), `compile-wiki` (P5 pages). SQLite-only; on PostgreSQL they raise loudly rather than silently degrade.
 - **Governance & drift (0.7.0)**: `gate` (P0 ontology review gate — propose → approve → apply/deprecate, human approval required, idempotent, JSONL validation) and `drift-report` (weekly baseline comparison over knowledge/episodes/entities/gate state; read-only, distinguishes no-change from failure).
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — same interface and behavior, verified by a shared parity suite (pg_trgm ILIKE for CJK, pgvector optional).
 - **MCP server**: 13 tools, zero-dependency stdio implementation, verified end-to-end by wire-level tests (and against the official SDK in CI).
 - **Migration from legacy agent memory**: already running an agent memory store? `import-drewgent` copies a legacy `knowledge.db` (knowledge/entities/relations/sessions) into p_layer, and `p_layer.drewdb` can even *open it in place* under p_layer's governance (WAL, busy timeout) so your existing tools keep working while p_layer takes over the connection. `import-rules` / `import-incidents` bring your existing rule and incident files in. You migrate when you're ready — nothing is locked in.
-- **Tests**: 158 — SQLite + PostgreSQL parity, governance, graph, ops, MCP wire, packaging, FTS5 query sanitization regressions.
+- **Tests**: 163 — SQLite + PostgreSQL parity, governance, graph, ops, MCP wire, packaging, FTS5 query sanitization regressions, additive rerank.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · package: **`p_layer`** · console: **`p-layer`**
 
 ```bash
 python3 -m unittest discover -s tests -v   # no dependencies, no network
 ```
+
+## Additive Rerank (0.8.0)
+
+Retrieval scoring was redesigned from multiplicative to **additive**: raw RRF relevance is preserved as the baseline, with small bounded boosts layered on top for confidence, recency, and TTL freshness. This matters because:
+
+- In the old multiplicative scheme (`rrf × confidence × freshness`), a single zero-signal killed an entry's entire score.
+- The additive scheme keeps signals independent — a low-confidence entry that perfectly matches the query still surfaces.
+
+### How it works
+
+```
+rerank_score = raw_rrf + confidence_boost + recency_boost + ttl_boost
+```
+
+| Signal | What it does | Default constants |
+|---|---|---|
+| `confidence_boost` | Entries above `confidence_center` get a nudge up; below get pushed down | gain=0.0005, center=0.5 |
+| `recency_boost` | Entries within `recency_window_days` get a boost that decays linearly to 0 | gain=0.0002, window=30 days |
+| `ttl_boost` | Entries with a TTL that are still "fresh" get a boost (replaces old `_freshness` multiplier) | uses `recency_gain` scale |
+
+All boosts are intentionally tiny relative to RRF scores (~0.016) — they nudge tie-breaking, not override relevance.
+
+### Configuring
+
+```python
+from p_layer import Store, RerankConfig
+
+# Custom configuration
+config = RerankConfig(
+    confidence_gain=0.001,       # more aggressive confidence signal
+    confidence_center=0.6,       # raise the bar
+    recency_gain=0.0005,         # stronger recency preference
+    recency_window_days=7.0,     # only last week matters
+)
+
+# Per-call override (advanced — most users just set module default)
+from p_layer.store import rrf_fuse
+results = rrf_fuse(fts_results, sem_results, limit=10, row_lookup=lookup, rerank=config)
+
+# Disable rerank entirely (legacy multiplicative behavior)
+results = rrf_fuse(fts_results, sem_results, limit=10, row_lookup=lookup,
+                   rerank=RerankConfig(enabled=False))
+```
+
+Results include a `rerank_components` dict for debugging:
+
+```json
+{
+  "score": 0.016734,
+  "rrf": 0.0164,
+  "rerank_components": {
+    "rrf": 0.0164,
+    "confidence_boost": 0.00025,
+    "recency_boost": 0.000134,
+    "ttl_boost": 0.0
+  }
+}
+```
+
+### Legacy mode
+
+Pass `RerankConfig(enabled=False)` to get the old `rrf × (0.5 + 0.5 × confidence) × freshness` scoring. Results will not include `rerank_components`.
+
+---
 
 ## Credits
 

@@ -148,19 +148,55 @@ p-layer assemble             # 규칙 + 최근 메모리 — 컨텍스트로 바
 
 - **엔진**: `p_layer.store.Store` — SQLite + FTS5 + 플러그형 임베딩, forward-only 체크섬 마이그레이션. 단일 스키마, 단일 구현.
 - **거버넌스**: P0-P6 레이어 ACL을 쓰기 시점에 강제(`WriteDenied`), supersede-not-delete, 스냅샷/롤백, 전체 감사 로그, 모순 스캔.
-- **회상**: FTS5 + 시맨틱 하이브리드, RRF 퓨전, confidence × freshness 랭킹, superseded 제외, 타입 다양화.
+- **회상**: FTS5 + 시맨틱 하이브리드, RRF 퓨전, 가산 리랭크(confidence + recency + TTL 부스트), superseded 제외, 타입 다양화.
 - **그래프**: 타입이 있는 엔티티/관계 온톨로지 + 제약 검증, explore / trace / 근본 원인 분석 / 전이 폐포 (사이클 안전).
 - **운영 잡**: `reembed`(버전관리 벡터 백필), `consolidate`(episodic → semantic 다이제스트), `compile-wiki`(P5 페이지). SQLite 전용, PostgreSQL에서는 조용히 망가지지 않고 명시적으로 거부.
 - **거버넌스와 드리프트 (0.7.0)**: `gate`(P0 온톨로지 리뷰 게이트 — propose → approve → apply/deprecate, 사람 승인 필수, 멱등, JSONL 검증)와 `drift-report`(지식/에피소드/엔티티/게이트 상태 기준 주간 baseline 비교; 읽기 전용, 변경 없음과 실패를 구분).
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — 동일 인터페이스·동작, 공유 패리티 스위트로 검증 (CJK 대응 pg_trgm ILIKE, pgvector 선택).
 - **MCP 서버**: 13개 툴, 의존성 0 stdio 구현, 와이어 레벨 테스트로 엔드투엔드 검증 (CI에서 공식 SDK로도).
 - **기존 에이전트 기억에서 마이그레이션**: 이미 운영 중인 에이전트 기억 저장소가 있다면, `import-drewgent`가 기존 `knowledge.db`(knowledge/entities/relations/sessions)를 p_layer로 복사하고, `p_layer.drewdb`는 그 데이터베이스를 p_layer 거버넌스(WAL, busy timeout) 아래 **그 자리에서 열어** 기존 도구를 그대로 쓰면서 p_layer가 연결을 관리하게 한다. `import-rules` / `import-incidents`는 기존 규칙·사건 파일을 이식한다. 준비됐을 때 옮기면 된다 — 잠기지 않는다.
-- **테스트**: 156개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징.
+- **테스트**: 163개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징, 가산 리랭크.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · 패키지: **`p_layer`** · 콘솔: **`p-layer`**
 
 ```bash
 python3 -m unittest discover -s tests -v   # 의존성·네트워크 없음
 ```
+
+## 가산 리랭크 (0.8.0)
+
+기존 곱셈 방식(`rrf × confidence × freshness`)에서 **가산 방식**으로 전환. raw RRF 점수를 보존한 채 작은 보정값을 얹는 설계:
+
+```
+rerank_score = raw_rrf + confidence_boost + recency_boost + ttl_boost
+```
+
+| 시그널 | 역할 | 기본값 |
+|---|---|---|
+| `confidence_boost` | `confidence_center` 위의 항목은 올리고, 아래는 내림 | gain=0.0005, center=0.5 |
+| `recency_boost` | `recency_window_days` 안의 항목에 선형 감쇄 보정 | gain=0.0002, window=30일 |
+| `ttl_boost` | TTL이 있고 아직 유효한 항목에 추가 보정 | `recency_gain` 스케일 |
+
+모든 보정값은 RRF 점수(~0.016) 대비 의도적으로 작게 설정 — 동점일 때 순서를 바꾸되, 검색 관련성을 뒤집지 않음.
+
+### 설정
+
+```python
+from p_layer import Store, RerankConfig
+
+# 커스텀 설정
+config = RerankConfig(
+    confidence_gain=0.001,       # 더 강한 confidence 시그널
+    confidence_center=0.6,       # 기준점 상향
+    recency_gain=0.0005,         # 더 강한 최신성 선호
+    recency_window_days=7.0,     # 최근 1주만 유효
+)
+
+# 비활성화 (기존 곱셈 방식으로 폴백)
+from p_layer.store import rrf_fuse, RerankConfig
+results = rrf_fuse(fts, sem, 10, lookup, rerank=RerankConfig(enabled=False))
+```
+
+---
 
 ## 크레딧
 

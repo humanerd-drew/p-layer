@@ -116,11 +116,114 @@ def _freshness(row: dict) -> float:
     return 1.0 + 0.3 * max(0.0, 1.0 - _age_days(row["created_at"]) / ttl)
 
 
+# ── Additive rerank configuration ──────────────────────────────────────────
+# Separates ranking signals into bounded additive boosts on top of raw RRF,
+# rather than the multiplicative approach where one zero-signal kills the rest.
+
+class RerankConfig:
+    """Tunable constants for the additive reranker.
+
+    All boost values are intentionally small relative to RRF scores (~0.016)
+    so they nudge ordering without overriding retrieval relevance.
+
+    Attributes:
+        confidence_gain: Max absolute boost from confidence signal.
+        confidence_center: Confidence value that produces zero boost (below = penalty, above = reward).
+        recency_gain: Max absolute boost from recency signal.
+        recency_window_days: Time window within which recency decays linearly from max to 0.
+        enabled: When False, falls back to the legacy multiplicative scoring.
+    """
+
+    __slots__ = (
+        "confidence_gain", "confidence_center",
+        "recency_gain", "recency_window_days",
+        "enabled",
+    )
+
+    def __init__(
+        self,
+        *,
+        confidence_gain: float = 0.0005,
+        confidence_center: float = 0.5,
+        recency_gain: float = 0.0002,
+        recency_window_days: float = 30.0,
+        enabled: bool = True,
+    ):
+        self.confidence_gain = confidence_gain
+        self.confidence_center = confidence_center
+        self.recency_gain = recency_gain
+        self.recency_window_days = recency_window_days
+        self.enabled = enabled
+
+
+# Module-level default — importers can override or pass per-call.
+DEFAULT_RERANK = RerankConfig()
+
+
+def _rerank_additive(candidates: list[dict], config: RerankConfig) -> list[dict]:
+    """Pure additive rerank: raw RRF + bounded confidence/recency boosts.
+
+    Each candidate dict must have 'rrf' (float) and 'row' (dict with
+    'confidence' and 'created_at'). Returns candidates sorted by
+    rerank_score desc, with rerank metadata attached.
+
+    TTL freshness: entries with ttl_days that are still within their TTL
+    window get a positive boost; entries beyond TTL get no boost (but no
+    penalty beyond that — they still compete on RRF + other signals).
+    """
+    for c in candidates:
+        row = c["row"]
+        # Confidence boost: linear around center, clamped to ±gain
+        conf = float(row.get("confidence") or 0.0)
+        conf_boost = (conf - config.confidence_center) * config.confidence_gain
+        max_pos = config.confidence_gain * (1.0 - config.confidence_center)
+        max_neg = -config.confidence_gain * config.confidence_center
+        conf_boost = max(max_neg, min(max_pos, conf_boost))
+
+        # Recency boost: linear decay within window, 0 outside
+        recency_boost = 0.0
+        created = row.get("created_at")
+        if created:
+            age = _age_days(created)
+            if config.recency_window_days > 0:
+                recency_boost = max(0.0, 1.0 - age / config.recency_window_days) * config.recency_gain
+
+        # TTL freshness boost: entries with ttl_days that are still fresh
+        # get an additional boost, decaying as they approach expiry.
+        ttl_boost = 0.0
+        ttl = row.get("ttl_days")
+        if ttl and created:
+            age = _age_days(created)
+            ttl_boost = max(0.0, 1.0 - age / float(ttl)) * config.recency_gain
+
+        c["rerank_components"] = {
+            "rrf": round(c["rrf"], 4),
+            "confidence_boost": round(conf_boost, 6),
+            "recency_boost": round(recency_boost, 6),
+            "ttl_boost": round(ttl_boost, 6),
+        }
+        c["rerank_score"] = round(c["rrf"] + conf_boost + recency_boost + ttl_boost, 6)
+
+    return sorted(
+        candidates,
+        key=lambda x: (-x["rerank_score"], -x["rrf"], x["row"]["id"]),
+    )
+
+
 def rrf_fuse(fts: list[dict], sem: list[tuple[float, int]], limit: int,
-             row_lookup) -> list[dict]:
+             row_lookup, *, rerank: RerankConfig | None = None) -> list[dict]:
     """Backend-agnostic RRF fusion: ranks FTS rows and semantic scores,
-    boosts by confidence and freshness, diversifies 3-per-type. `row_lookup`
-    maps knowledge ids to row dicts (superseded rows are excluded by it)."""
+    applies additive rerank (confidence + recency boosts), diversifies
+    3-per-type. `row_lookup` maps knowledge ids to row dicts (superseded
+    rows are excluded by it).
+
+    Args:
+        rerank: Rerank configuration. Pass RerankConfig(enabled=False) to
+                use the legacy multiplicative scoring. Defaults to
+                DEFAULT_RERANK (additive, enabled).
+    """
+    if rerank is None:
+        rerank = DEFAULT_RERANK
     k = 60
     scores: dict[int, dict] = {}
     for rank, row in enumerate(fts, start=1):
@@ -134,11 +237,19 @@ def rrf_fuse(fts: list[dict], sem: list[tuple[float, int]], limit: int,
     candidates = [e for e in scores.values() if e["row"] is not None]
     if not candidates:
         return []
-    ordered = sorted(
-        candidates,
-        key=lambda e: e["rrf"] * (0.5 + 0.5 * e["row"]["confidence"]) * _freshness(e["row"]),
-        reverse=True,
-    )
+
+    # ── Ranking ──
+    if rerank.enabled:
+        ordered = _rerank_additive(candidates, rerank)
+    else:
+        # Legacy multiplicative path (backward compat)
+        ordered = sorted(
+            candidates,
+            key=lambda e: e["rrf"] * (0.5 + 0.5 * e["row"]["confidence"]) * _freshness(e["row"]),
+            reverse=True,
+        )
+
+    # ── Diversification ──
     seen: dict[str, int] = {}
     out: list[dict] = []
     # Diversification caps per type are meaningless on a homogeneous corpus
@@ -153,22 +264,28 @@ def rrf_fuse(fts: list[dict], sem: list[tuple[float, int]], limit: int,
         if seen.get(t, 0) >= cap:
             continue
         seen[t] = seen.get(t, 0) + 1
-        final = entry["rrf"] * (0.5 + 0.5 * row["confidence"]) * _freshness(row)
-        out.append(
-            {
-                "id": row["id"],
-                "type": row["type"],
-                "content": row["content"],
-                "source": row["source"],
-                "layer": row["layer"],
-                "who": row["who"],
-                "confidence": row["confidence"],
-                "created_at": row["created_at"],
-                "score": round(final, 4),
-                "rrf": round(entry["rrf"], 4),
-                "semantic_score": entry["sem"],
-            }
-        )
+        if rerank.enabled:
+            final_score = entry["rerank_score"]
+        else:
+            final_score = round(
+                entry["rrf"] * (0.5 + 0.5 * row["confidence"]) * _freshness(row), 4
+            )
+        result = {
+            "id": row["id"],
+            "type": row["type"],
+            "content": row["content"],
+            "source": row["source"],
+            "layer": row["layer"],
+            "who": row["who"],
+            "confidence": row["confidence"],
+            "created_at": row["created_at"],
+            "score": final_score,
+            "rrf": round(entry["rrf"], 4),
+            "semantic_score": entry["sem"],
+        }
+        if rerank.enabled:
+            result["rerank_components"] = entry["rerank_components"]
+        out.append(result)
         if len(out) >= limit:
             break
     return out

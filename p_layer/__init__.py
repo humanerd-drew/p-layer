@@ -24,7 +24,10 @@ from .store import (
     LAYER_AUTHORITY,
     LAYER_WRITERS,
     RELATION_CONSTRAINTS,
+    RerankConfig,
+    DEFAULT_RERANK,
     WriteDenied,
+    rrf_fuse,
 )
 from .migrations import migrate, MIGRATIONS
 from .embed import Embedder, OllamaEmbedder, HashEmbedder, NoopEmbedder, load_embedder
@@ -34,6 +37,9 @@ from .pgstore import PgStore
 __all__ = [
     "Store",
     "PgStore",
+    "RerankConfig",
+    "DEFAULT_RERANK",
+    "rrf_fuse",
     "KNOWLEDGE_TYPES",
     "LAYER_AUTHORITY",
     "LAYER_WRITERS",
