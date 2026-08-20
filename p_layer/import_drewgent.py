@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 from pathlib import Path
 
 from .store import Store
@@ -28,14 +29,16 @@ def import_drewgent(src_path: str | Path, store: Store, reembed: bool = True) ->
             pass
 
         imported = 0
+        kid_map: dict[int, int] = {}  # old knowledge_id → new knowledge_id
         for row in knowledge:
-            store.add_knowledge(
+            new_kid = store.add_knowledge(
                 row["content"],
                 type=row["type"] if row["type"] in ("fact", "decision", "preference", "pattern") else "fact",
                 source=row["source"],
                 created_at=row["created_at"] or None,
                 embed=reembed,
             )
+            kid_map[row["id"]] = new_kid
             imported += 1
 
         idmap: dict[int, int] = {}
@@ -59,7 +62,7 @@ def import_drewgent(src_path: str | Path, store: Store, reembed: bool = True) ->
                 nid = store.add_entity(
                     e["label"], e["type"] or "concept",
                     properties=props,
-                    knowledge_id=e["knowledge_id"] if "knowledge_id" in cols else None,
+                    knowledge_id=kid_map.get(e["knowledge_id"]) if "knowledge_id" in cols and e["knowledge_id"] else None,
                 )
                 idmap[e["id"]] = nid
         except sqlite3.OperationalError as exc:

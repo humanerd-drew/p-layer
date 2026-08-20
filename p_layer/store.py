@@ -453,6 +453,9 @@ class Store:
         except EmbeddingError as exc:
             self.last_embed_warning = str(exc)
             return
+        if len(vec) != emb.dimensions:
+            self.last_embed_warning = f"dimension mismatch: got {len(vec)}, expected {emb.dimensions}"
+            return
         self.db.execute(
             "INSERT OR REPLACE INTO embeddings "
             "(knowledge_id, model, embedding_version, dimensions, vector, created_at) VALUES (?,?,?,?,?,?)",
@@ -652,6 +655,8 @@ class Store:
         ).fetchall()
         scored = []
         for r in rows:
+            if r["dimensions"] != emb.dimensions:
+                continue  # skip stale vectors from a different embedder
             sim = _cosine(qvec, _blob_to_vec(r["vector"], r["dimensions"]))
             if sim > 0.15:
                 scored.append((sim, r["knowledge_id"]))
@@ -1026,6 +1031,9 @@ class Store:
                     failed += len(batch)
                     continue
                 for b, vec in zip(batch, vecs):
+                    if len(vec) != emb.dimensions:
+                        failed += 1
+                        continue
                     db.execute(
                         "INSERT OR REPLACE INTO embeddings "
                         "(knowledge_id, model, embedding_version, dimensions, vector, created_at) "
@@ -1033,7 +1041,7 @@ class Store:
                         (b["id"], emb.model, emb.embedding_version, emb.dimensions, _vec_to_blob(vec), utcnow()),
                     )
                     embedded += 1
-            db.commit()
+                db.commit()  # commit per batch — partial progress survives crashes
         return {"total": len(rows), "already": already, "embedded": embedded,
                 "failed": failed, "dry_run": dry_run}
 
