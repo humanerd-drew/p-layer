@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from p_layer import __version__
 from p_layer.drewdb import management_info, open_managed_connection
 
 
@@ -46,7 +47,7 @@ class DrewdbTests(unittest.TestCase):
         info = management_info(src)
         self.assertEqual(info["p_layer.managed"], "true")
         self.assertIn("p_layer.schema_checksum", info)
-        self.assertEqual(info["p_layer.version"], "0.6.1")
+        self.assertEqual(info["p_layer.version"], __version__)
 
     def test_managed_connection_is_additive(self):
         tmp = tempfile.TemporaryDirectory()

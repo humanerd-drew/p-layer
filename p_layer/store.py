@@ -91,6 +91,9 @@ def _age_days(created_at: str | None) -> float:
         dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
     except ValueError:
         return 0.0
+    # Legacy DBs may store naive timestamps (no timezone). Assume UTC.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
     return max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 86400.0)
 
 
