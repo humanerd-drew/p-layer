@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 
 from .embed import load_embedder
@@ -42,8 +43,15 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--no-semantic", action="store_true")
     q.add_argument("--serendipity", action="store_true")
     q.add_argument("--json", action="store_true")
+    q.add_argument("--why", action="store_true", help="show source, session, and timestamp")
 
     sub.add_parser("stats", help="store statistics")
+
+    status = sub.add_parser("status", help="show read-only store status")
+    status.add_argument("--json", action="store_true")
+
+    doctor = sub.add_parser("doctor", help="run read-only health checks")
+    doctor.add_argument("--json", action="store_true")
 
     a = sub.add_parser("assemble", help="budget-bounded context assembly")
     a.add_argument("--budget", type=int, default=12000)
@@ -161,6 +169,15 @@ def _make_store(args) -> Store:
     return Store(args.db, embedder=embedder)
 
 
+def _command_prefix(args) -> str:
+    parts = ["p-layer"]
+    if args.db:
+        parts.extend(["--db", args.db])
+    if args.embed:
+        parts.extend(["--embed", args.embed])
+    return shlex.join(parts)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     store = _make_store(args)
@@ -169,6 +186,21 @@ def main(argv: list[str] | None = None) -> int:
         stats = store.stats()
         print(f"initialized {store.path} (schema v{stats['schema_version']})")
         print(json.dumps(stats, ensure_ascii=False))
+        prefix = _command_prefix(args)
+        print(f'next: {prefix} remember "your first memory"')
+        print(f'next: {prefix} recall "your topic"')
+        return 0
+
+    if args.cmd in ("status", "doctor"):
+        from .health import format_report, inspect_store
+
+        report = inspect_store(args.db or DEFAULT_DB, args.embed)
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        else:
+            print(format_report(report))
+        if args.cmd == "doctor" and report["status"] in ("error", "not_initialized"):
+            return 1
         return 0
 
     if args.cmd == "remember":
@@ -204,7 +236,13 @@ def main(argv: list[str] | None = None) -> int:
             preview = r["content"][:200].replace("\n", " ").strip()
             sem = f" sem={r['semantic_score']:.3f}" if r["semantic_score"] is not None else ""
             ser = " (serendipity)" if r.get("_serendipity") else ""
-            print(f"  [{r['score']:.3f}]{sem} ({r['type']}, {r['layer']}) {preview}{ser}")
+            why = ""
+            if args.why:
+                source = r.get("source") or "unknown"
+                session = r.get("session_id") or "none"
+                created = r.get("created_at") or "unknown"
+                why = f" | source={source} session={session} created={created}"
+            print(f"  [{r['score']:.3f}]{sem} ({r['type']}, {r['layer']}) {preview}{ser}{why}")
         print(f"\n{len(results)} result(s)")
         return 0
 

@@ -384,6 +384,14 @@ class Store:
             self._db.close()
             self._db = None
 
+    def __del__(self) -> None:
+        # CLI callers may create a short-lived Store without an explicit close.
+        # Keep that path from leaking a SQLite connection during interpreter GC.
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def _get_embedder(self) -> Embedder | None:
         if self.embedder is None:
             try:

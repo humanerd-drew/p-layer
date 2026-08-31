@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
 [![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-154%20passed-green)](README.md)
+[![Tests](https://img.shields.io/badge/tests-165%20passed-green)](README.md)
 
 🌏 [README.md](README.md) — English
 
@@ -116,15 +116,19 @@ python3 -m p_layer eval examples/suite.example.json
 
 ```bash
 pip install p-layers
-export P_LAYER_DB=~/.p_layer/memory.db
-export P_LAYER_EMBED=hash    # 오프라인 모드; 기본은 ollama
+p-layer --db ~/.p_layer/memory.db --embed hash init
+p-layer --db ~/.p_layer/memory.db --embed hash status
 
-p-layer remember "결제를 PortOne v2로 바꿨다" --type decision
-p-layer recall "결제"
-p-layer assemble             # 규칙 + 최근 메모리 — 컨텍스트로 바로 사용
+p-layer --db ~/.p_layer/memory.db --embed hash remember "결제를 PortOne v2로 바꿨다" --type decision --source onboarding
+p-layer --db ~/.p_layer/memory.db --embed hash recall "결제" --why
+p-layer --db ~/.p_layer/memory.db --embed hash assemble
+p-layer --db ~/.p_layer/memory.db --embed hash doctor
 ```
 
-설치할 DB도, 돌릴 서비스도 없다. 메모리는 파일 하나다.
+`init`은 DB를 만들고 바로 다음 명령을 안내한다. `status`는 DB가 없어도 실패하지 않고
+현재 상태만 보여주며, `doctor`는 스키마·무결성·FTS·임베딩 상태를 점검한다.
+`recall --why`를 쓰면 결과의 출처·세션·생성 시각까지 확인할 수 있다.
+설치할 별도 DB나 돌릴 서비스는 없다. 메모리는 파일 하나다.
 
 ## AI 도구와 함께 쓰기
 
@@ -155,7 +159,7 @@ p-layer assemble             # 규칙 + 최근 메모리 — 컨텍스트로 바
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — 동일 인터페이스·동작, 공유 패리티 스위트로 검증 (CJK 대응 pg_trgm ILIKE, pgvector 선택).
 - **MCP 서버**: 13개 툴, 의존성 0 stdio 구현, 와이어 레벨 테스트로 엔드투엔드 검증 (CI에서 공식 SDK로도).
 - **기존 에이전트 기억에서 마이그레이션**: 이미 운영 중인 에이전트 기억 저장소가 있다면, `import-drewgent`가 기존 `knowledge.db`(knowledge/entities/relations/sessions)를 p_layer로 복사하고, `p_layer.drewdb`는 그 데이터베이스를 p_layer 거버넌스(WAL, busy timeout) 아래 **그 자리에서 열어** 기존 도구를 그대로 쓰면서 p_layer가 연결을 관리하게 한다. `import-rules` / `import-incidents`는 기존 규칙·사건 파일을 이식한다. 준비됐을 때 옮기면 된다 — 잠기지 않는다.
-- **테스트**: 163개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징, 가산 리랭크.
+- **테스트**: 165개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징, 가산 리랭크, CLI 사용성.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · 패키지: **`p_layer`** · 콘솔: **`p-layer`**
 
 ```bash
