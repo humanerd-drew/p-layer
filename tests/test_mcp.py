@@ -32,7 +32,7 @@ class McpTests(unittest.TestCase):
         self.assertEqual(
             names,
             {"remember", "recall", "forget", "update",
-             "snapshot_create", "snapshot_rollback", "memory_stats", "assemble",
+             "snapshot_create", "snapshot_rollback", "memory_stats", "assemble", "context",
              "memory_audit", "graph_explore", "graph_trace", "graph_rca",
              "consolidate"},
         )
@@ -51,6 +51,23 @@ class McpTests(unittest.TestCase):
             s,
         )
         self.assertIn("portone", r2["result"]["content"][0]["text"])
+
+    def test_context_assembles_query_relevant_memory(self):
+        s = self._store()
+        s.add_rule("never expose secrets", priority=10, layer="P0")
+        s.add_knowledge("payments use portone v2", type="decision")
+        s.add_knowledge("deployments use blue green", type="pattern")
+
+        response = handle_message(
+            {"jsonrpc": "2.0", "id": 6, "method": "tools/call",
+             "params": {"name": "context", "arguments": {
+                 "query": "payments", "budget_chars": 2000,
+             }}},
+            s,
+        )
+        text = response["result"]["content"][0]["text"]
+        self.assertLess(text.index("never expose secrets"), text.index("payments use portone v2"))
+        self.assertNotIn("blue green", text)
 
     def test_unknown_tool_error(self):
         resp = handle_message(

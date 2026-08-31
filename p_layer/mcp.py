@@ -110,6 +110,18 @@ TOOLS = [
         },
     },
     {
+        "name": "context",
+        "description": "Assemble startup context: canonical rules plus knowledge relevant to the current task, within a character budget.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Current task or user request"},
+                "limit": {"type": "number", "default": 10},
+                "budget_chars": {"type": "number", "default": 12000},
+            },
+        },
+    },
+    {
         "name": "memory_audit",
         "description": "Recent governance audit entries — every write and every denied write.",
         "inputSchema": {
@@ -229,6 +241,12 @@ def _call_tool(name: str, arguments: dict, store: Store) -> str:
         return json.dumps(store.stats(), ensure_ascii=False, indent=2)
     if name == "assemble":
         return store.assemble(budget_chars=int(arguments.get("budget_chars", 12000)))
+    if name == "context":
+        return store.assemble(
+            budget_chars=int(arguments.get("budget_chars", 12000)),
+            query=arguments.get("query") or None,
+            limit=int(arguments.get("limit", 10)),
+        )
     if name == "memory_audit":
         entries = store.audit_log(
             limit=int(arguments.get("limit", 20)),

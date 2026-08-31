@@ -52,11 +52,24 @@ class CliUxTests(unittest.TestCase):
         self.assertIn("(decision, P5)", output)
         self.assertIn("source=test-session", output)
 
+        code, _ = self.run_cli(
+            "remember",
+            "deployments use blue green",
+            "--type",
+            "pattern",
+        )
+        self.assertEqual(code, 0)
+
+        code, output = self.run_cli("context", "payments", "--no-semantic")
+        self.assertEqual(code, 0)
+        self.assertIn("Groble handles payments", output)
+        self.assertNotIn("blue green", output)
+
         code, output = self.run_cli("doctor", "--json")
         self.assertEqual(code, 0)
         report = json.loads(output)
         self.assertEqual(report["status"], "ok")
-        self.assertEqual(report["counts"]["knowledge"], 1)
+        self.assertEqual(report["counts"]["knowledge"], 2)
 
 
 if __name__ == "__main__":

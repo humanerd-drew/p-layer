@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
 [![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-165%20passed-green)](README.md)
+[![Tests](https://img.shields.io/badge/tests-167%20passed-green)](README.md)
 
 🌏 [README.md](README.md) — English
 
@@ -121,18 +121,23 @@ p-layer --db ~/.p_layer/memory.db --embed hash status
 
 p-layer --db ~/.p_layer/memory.db --embed hash remember "결제를 PortOne v2로 바꿨다" --type decision --source onboarding
 p-layer --db ~/.p_layer/memory.db --embed hash recall "결제" --why
-p-layer --db ~/.p_layer/memory.db --embed hash assemble
+p-layer --db ~/.p_layer/memory.db --embed hash context "현재 결제 작업"
 p-layer --db ~/.p_layer/memory.db --embed hash doctor
 ```
 
 `init`은 DB를 만들고 바로 다음 명령을 안내한다. `status`는 DB가 없어도 실패하지 않고
 현재 상태만 보여주며, `doctor`는 스키마·무결성·FTS·임베딩 상태를 점검한다.
-`recall --why`를 쓰면 결과의 출처·세션·생성 시각까지 확인할 수 있다.
+세션 시작 시 `context`를 한 번 호출하면 현재 작업과 관련된 기억을 찾고,
+canonical rule을 budget 안에서 먼저 붙인다. `recall --why`를 쓰면 결과의
+출처·세션·생성 시각까지 확인할 수 있다.
 설치할 별도 DB나 돌릴 서비스는 없다. 메모리는 파일 하나다.
 
 ## AI 도구와 함께 쓰기
 
 에이전트는 표준 연결 방식 **MCP**로 메모리와 대화한다. 도구 설정에 한 블록만 추가하면 에이전트가 기억·회상·감사·스냅샷·근본 원인 추적을 할 수 있다:
+
+작업 시작 시 현재 사용자 요청을 넣어 `context`를 호출하면 관련 기억과 canonical rule을
+budget 안의 한 payload로 받을 수 있다.
 
 ```json
 {
@@ -157,9 +162,9 @@ p-layer --db ~/.p_layer/memory.db --embed hash doctor
 - **운영 잡**: `reembed`(버전관리 벡터 백필), `consolidate`(episodic → semantic 다이제스트), `compile-wiki`(P5 페이지). SQLite 전용, PostgreSQL에서는 조용히 망가지지 않고 명시적으로 거부.
 - **거버넌스와 드리프트 (0.7.0)**: `gate`(P0 온톨로지 리뷰 게이트 — propose → approve → apply/deprecate, 사람 승인 필수, 멱등, JSONL 검증)와 `drift-report`(지식/에피소드/엔티티/게이트 상태 기준 주간 baseline 비교; 읽기 전용, 변경 없음과 실패를 구분).
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — 동일 인터페이스·동작, 공유 패리티 스위트로 검증 (CJK 대응 pg_trgm ILIKE, pgvector 선택).
-- **MCP 서버**: 13개 툴, 의존성 0 stdio 구현, 와이어 레벨 테스트로 엔드투엔드 검증 (CI에서 공식 SDK로도).
+- **MCP 서버**: 14개 툴 — 질의 기반 세션 시작용 `context` 포함 — 의존성 0 stdio 구현, 와이어 레벨 테스트로 엔드투엔드 검증 (CI에서 공식 SDK로도).
 - **기존 에이전트 기억에서 마이그레이션**: 이미 운영 중인 에이전트 기억 저장소가 있다면, `import-drewgent`가 기존 `knowledge.db`(knowledge/entities/relations/sessions)를 p_layer로 복사하고, `p_layer.drewdb`는 그 데이터베이스를 p_layer 거버넌스(WAL, busy timeout) 아래 **그 자리에서 열어** 기존 도구를 그대로 쓰면서 p_layer가 연결을 관리하게 한다. `import-rules` / `import-incidents`는 기존 규칙·사건 파일을 이식한다. 준비됐을 때 옮기면 된다 — 잠기지 않는다.
-- **테스트**: 165개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징, 가산 리랭크, CLI 사용성.
+- **테스트**: 167개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징, 가산 리랭크, CLI/context 사용성.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · 패키지: **`p_layer`** · 콘솔: **`p-layer`**
 
 ```bash

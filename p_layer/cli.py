@@ -56,6 +56,13 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("assemble", help="budget-bounded context assembly")
     a.add_argument("--budget", type=int, default=12000)
 
+    c = sub.add_parser("context", help="assemble startup context for the current task")
+    c.add_argument("query", nargs="?", default=None)
+    c.add_argument("--budget", type=int, default=12000)
+    c.add_argument("--limit", type=int, default=10)
+    c.add_argument("--no-semantic", action="store_true")
+    c.add_argument("--json", action="store_true")
+
     f = sub.add_parser("forget", help="supersede an entry (soft-delete)")
     f.add_argument("id", type=int)
     f.add_argument("--reason", default=None)
@@ -252,6 +259,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "assemble":
         print(store.assemble(budget_chars=args.budget))
+        return 0
+
+    if args.cmd == "context":
+        assembled = store.assemble(
+            budget_chars=args.budget,
+            query=args.query,
+            limit=args.limit,
+            use_semantic=not args.no_semantic,
+        )
+        if args.json:
+            print(json.dumps({"query": args.query, "context": assembled}, ensure_ascii=False))
+        else:
+            print(assembled)
         return 0
 
     if args.cmd == "eval":

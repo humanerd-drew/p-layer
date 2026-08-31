@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
 [![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-165%20passed-green)](README.md)
+[![Tests](https://img.shields.io/badge/tests-167%20passed-green)](README.md)
 
 **Memory for AI agents with rules that are kept, not just written.**
 
@@ -136,19 +136,23 @@ p-layer --db ~/.p_layer/memory.db --embed hash status
 
 p-layer --db ~/.p_layer/memory.db --embed hash remember "we switched to PortOne v2 for payments" --type decision --source onboarding
 p-layer --db ~/.p_layer/memory.db --embed hash recall "payment" --why
-p-layer --db ~/.p_layer/memory.db --embed hash assemble
+p-layer --db ~/.p_layer/memory.db --embed hash context "current payment task"
 p-layer --db ~/.p_layer/memory.db --embed hash doctor
 ```
 
 `init` creates the store and prints the next commands. `status` is safe to run
 before initialization; `doctor` checks the schema, integrity, FTS index, and
-embedding configuration. Add `--why` to `recall` to see each result's source,
-session, and creation time. No separate database or service is required; the
-memory is one file.
+embedding configuration. Call `context` once at session start to retrieve
+task-relevant memory and place canonical rules first within the budget. Add
+`--why` to `recall` to see each result's source, session, and creation time.
+No separate database or service is required; the memory is one file.
 
 ## Use it with your AI tools
 
 Agents talk to memory through **MCP**, the standard connector. Add one block to your tool's config and the agent can `remember`, `recall`, audit, snapshot, and trace root causes:
+
+At the start of a task, call `context` with the current user request; it returns
+relevant memories and canonical rules in one bounded payload.
 
 ```json
 {
@@ -173,9 +177,9 @@ Agents talk to memory through **MCP**, the standard connector. Add one block to 
 - **Ops jobs**: `reembed` (versioned vector backfill), `consolidate` (episodic → semantic digests), `compile-wiki` (P5 pages). SQLite-only; on PostgreSQL they raise loudly rather than silently degrade.
 - **Governance & drift (0.7.0)**: `gate` (P0 ontology review gate — propose → approve → apply/deprecate, human approval required, idempotent, JSONL validation) and `drift-report` (weekly baseline comparison over knowledge/episodes/entities/gate state; read-only, distinguishes no-change from failure).
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — same interface and behavior, verified by a shared parity suite (pg_trgm ILIKE for CJK, pgvector optional).
-- **MCP server**: 13 tools, zero-dependency stdio implementation, verified end-to-end by wire-level tests (and against the official SDK in CI).
+- **MCP server**: 14 tools, including query-aware startup `context`, with a zero-dependency stdio implementation verified end-to-end by wire-level tests (and against the official SDK in CI).
 - **Migration from legacy agent memory**: already running an agent memory store? `import-drewgent` copies a legacy `knowledge.db` (knowledge/entities/relations/sessions) into p_layer, and `p_layer.drewdb` can even *open it in place* under p_layer's governance (WAL, busy timeout) so your existing tools keep working while p_layer takes over the connection. `import-rules` / `import-incidents` bring your existing rule and incident files in. You migrate when you're ready — nothing is locked in.
-- **Tests**: 165 — SQLite + PostgreSQL parity, governance, graph, ops, MCP wire, packaging, FTS5 query sanitization regressions, additive rerank, and CLI UX.
+- **Tests**: 167 — SQLite + PostgreSQL parity, governance, graph, ops, MCP wire, packaging, FTS5 query sanitization regressions, additive rerank, and CLI UX/context.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · package: **`p_layer`** · console: **`p-layer`**
 
 ```bash

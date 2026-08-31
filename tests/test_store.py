@@ -88,6 +88,19 @@ class StoreTests(unittest.TestCase):
         out = s.assemble()
         self.assertIn("weekly sync", out)
 
+    def test_context_query_is_relevant_and_deduplicated(self):
+        s = self._store()
+        s.add_rule("never expose secrets", priority=10, layer="P0")
+        s.add_knowledge("payments use PortOne v2", type="decision")
+        s.add_knowledge("payments use PortOne v2", type="decision")
+        s.add_knowledge("deployments use blue green", type="pattern")
+
+        out = s.assemble(query="payments", use_semantic=False, limit=10)
+
+        self.assertLess(out.index("never expose secrets"), out.index("payments use PortOne v2"))
+        self.assertEqual(out.count("payments use PortOne v2"), 1)
+        self.assertNotIn("blue green", out)
+
 
 if __name__ == "__main__":
     unittest.main()

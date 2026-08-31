@@ -342,17 +342,26 @@ def compose_assemble(rules: list[dict], recent: list[dict], budget_chars: int = 
     order) first, then recent knowledge. Never emits partial items."""
     parts: list[str] = []
     used = 0
+    seen: set[str] = set()
     for r in rules:
         text = f"[{r['layer']}] {r['text']}"
+        dedup_key = " ".join(text.casefold().split())
+        if dedup_key in seen:
+            continue
         if used + len(text) > budget_chars:
             break
         parts.append(text)
+        seen.add(dedup_key)
         used += len(text)
     for k in recent:
         text = f"[{k['layer']}][{k['type']}] {k['content']}"
+        dedup_key = " ".join(text.casefold().split())
+        if dedup_key in seen:
+            continue
         if used + len(text) > budget_chars:
             break
         parts.append(text)
+        seen.add(dedup_key)
         used += len(text)
     return "\n\n".join(parts)
 
@@ -739,10 +748,22 @@ class Store:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def assemble(self, budget_chars: int = 12000, include: tuple[str, ...] = ("rules", "recent")) -> str:
-        """Deterministic, budget-bounded context assembly (see compose_assemble)."""
+    def assemble(
+        self,
+        budget_chars: int = 12000,
+        include: tuple[str, ...] = ("rules", "recent"),
+        query: str | None = None,
+        limit: int = 10,
+        use_semantic: bool = True,
+    ) -> str:
+        """Assemble rules plus recent or query-relevant knowledge within a budget."""
         rules = self.enabled_rules() if "rules" in include else []
-        recent = self.recent_knowledge(limit=50) if "recent" in include else []
+        if "recent" not in include:
+            recent = []
+        elif query:
+            recent = self.recall(query, limit=limit, use_semantic=use_semantic)
+        else:
+            recent = self.recent_knowledge(limit=50)
         return compose_assemble(rules, recent, budget_chars)
 
     def stats(self) -> dict:
