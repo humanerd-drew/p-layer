@@ -66,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     f = sub.add_parser("forget", help="supersede an entry (soft-delete)")
     f.add_argument("id", type=int)
     f.add_argument("--reason", default=None)
+    f.add_argument("--who", default="system")
 
     u = sub.add_parser("update", help="supersede + reinsert an entry")
     u.add_argument("id", type=int)
@@ -73,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--type", choices=KNOWLEDGE_TYPES, default=None)
     u.add_argument("--confidence", type=float, default=None)
     u.add_argument("--layer", choices=["P0", "P1", "P2", "P3", "P4", "P5", "P6"], default=None)
+    u.add_argument("--who", default="system")
     ev = sub.add_parser("eval", help="run the eval suite: recall@k (p_layer vs drewgent baseline) + ACL compliance")
     ev.add_argument("suite", help="path to eval suite JSON")
     ev.add_argument("--json", action="store_true")
@@ -152,6 +154,7 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--label", default=None)
     sr = sn_sub.add_parser("rollback")
     sr.add_argument("version_id")
+    sr.add_argument("--who", default="system")
 
     ra = sub.add_parser("rules", help="manage canonical rules")
     ra_sub = ra.add_subparsers(dest="rules_cmd", required=True)
@@ -372,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "forget":
-        ok = store.forget(args.id, reason=args.reason)
+        ok = store.forget(args.id, reason=args.reason, who=args.who)
         print(f"✓ superseded #{args.id}" if ok else f"entry #{args.id} not found or already superseded")
         return 0
 
@@ -383,6 +386,7 @@ def main(argv: list[str] | None = None) -> int:
             type=args.type,
             confidence=args.confidence,
             layer=args.layer,
+            who=args.who,
         )
         print(f"✓ updated #{args.id} → #{new_id}")
         return 0
@@ -392,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
             sid = store.snapshot_create(args.version_id, label=args.label)
             print(f"✓ snapshot '{args.version_id}' created (#{sid})")
         else:
-            n = store.snapshot_rollback(args.version_id)
+            n = store.snapshot_rollback(args.version_id, who=args.who)
             print(f"✓ rolled back to '{args.version_id}': {n} entry(ies) superseded")
         return 0
 

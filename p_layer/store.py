@@ -75,6 +75,18 @@ def _check_layer_write(layer: str, who: str) -> None:
         )
 
 
+def _writable_layers(who: str) -> list[str]:
+    """Layers `who` may write to (used to scope bulk operations like rollback)."""
+    out = []
+    for layer in LAYER_AUTHORITY:
+        try:
+            _check_layer_write(layer, who)
+        except WriteDenied:
+            continue
+        out.append(layer)
+    return out
+
+
 def utcnow() -> str:
     # Microsecond precision so snapshot cut-offs and ordering never collide
     # within the same second (p-layer's SQLite path has this exact bug class).
@@ -482,9 +494,25 @@ class Store:
             (kid, emb.model, emb.embedding_version, emb.dimensions, _vec_to_blob(vec), utcnow()),
         )
 
-    def forget(self, knowledge_id: int, reason: str | None = None) -> bool:
-        """Supersede an entry (never destroy). Recall stops surfacing it; history stays."""
+    def forget(self, knowledge_id: int, reason: str | None = None, who: str = "system") -> bool:
+        """Supersede an entry (never destroy). Recall stops surfacing it; history stays.
+
+        `who` is the *caller*. It must be allowed to write the entry's layer,
+        otherwise the call is refused and recorded as a denied write.
+        """
         db = self.db
+        row = db.execute(
+            "SELECT layer FROM knowledge WHERE id = ? AND superseded_by IS NULL", (knowledge_id,)
+        ).fetchone()
+        if row is None:
+            return False
+        try:
+            _check_layer_write(row["layer"], who)
+        except WriteDenied as exc:
+            self._audit("write_denied", knowledge_id=knowledge_id, layer=row["layer"], who=who,
+                        detail=f"forget: {exc}", denied=True)
+            db.commit()
+            raise
         cur = db.execute(
             "UPDATE knowledge SET superseded_by = id, superseded_reason = ? "
             "WHERE id = ? AND superseded_by IS NULL",
@@ -493,7 +521,8 @@ class Store:
         db.commit()
         ok = cur.rowcount > 0
         if ok:
-            self._audit("forget", knowledge_id=knowledge_id, detail=reason or "superseded")
+            self._audit("forget", knowledge_id=knowledge_id, layer=row["layer"], who=who,
+                        detail=reason or "superseded")
             db.commit()
         return ok
 
@@ -513,6 +542,18 @@ class Store:
             raise ValueError(f"no knowledge entry #{knowledge_id}")
         if row["superseded_by"] is not None:
             raise ValueError(f"entry #{knowledge_id} is already superseded")
+        # Authorize the *caller* against the layer being replaced. The original
+        # author is never used as the caller's authority. (add_knowledge below
+        # checks the destination layer.) Programmatic default caller is "system",
+        # matching add_knowledge; untrusted callers (MCP) must pass their own who.
+        caller = who or "system"
+        try:
+            _check_layer_write(row["layer"], caller)
+        except WriteDenied as exc:
+            self._audit("write_denied", knowledge_id=knowledge_id, layer=row["layer"], who=caller,
+                        detail=f"update: {exc}", denied=True)
+            db.commit()
+            raise
         new_id = self.add_knowledge(
             content if content is not None else row["content"],
             type=type or row["type"],
@@ -524,7 +565,7 @@ class Store:
             ttl_days=row["ttl_days"],
         )
         db.execute("UPDATE knowledge SET superseded_by = ? WHERE id = ?", (new_id, knowledge_id))
-        self._audit("update", knowledge_id=knowledge_id, layer=row["layer"], who=row["who"],
+        self._audit("update", knowledge_id=knowledge_id, layer=row["layer"], who=caller,
                     detail=f"superseded_by={new_id}")
         db.commit()
         return new_id
@@ -547,19 +588,34 @@ class Store:
         db.commit()
         return int(cur.lastrowid)
 
-    def snapshot_rollback(self, version_id: str) -> int:
-        """Supersede every active entry created after the snapshot."""
+    def snapshot_rollback(self, version_id: str, who: str = "system") -> int:
+        """Supersede every active entry created after the snapshot.
+
+        Only entries in layers `who` may write are touched; entries in other
+        layers (e.g. P0 for a non-system caller) are left as they are. This is a
+        partial rollback by design; the number left untouched is available as
+        `last_rollback_skipped` and in the audit log (`skipped_protected=N`).
+        """
         db = self.db
         snap = db.execute("SELECT * FROM snapshots WHERE version_id = ?", (version_id,)).fetchone()
         if snap is None:
             raise ValueError(f"no snapshot '{version_id}'")
+        layers = _writable_layers(who)
+        self.last_rollback_skipped = int(db.execute(
+            "SELECT COUNT(*) AS c FROM knowledge WHERE superseded_by IS NULL AND created_at > ? "
+            f"AND layer NOT IN ({','.join('?' for _ in layers) or chr(39)*2})",
+            (snap["created_at"], *layers),
+        ).fetchone()["c"])
+        marks = ",".join("?" for _ in layers) or "''"
         cur = db.execute(
             "UPDATE knowledge SET superseded_by = id, superseded_reason = ? "
-            "WHERE superseded_by IS NULL AND created_at > ?",
-            (f"rollback:{version_id}", snap["created_at"]),
+            f"WHERE superseded_by IS NULL AND created_at > ? AND layer IN ({marks})",
+            (f"rollback:{version_id}", snap["created_at"], *layers),
         )
         db.commit()
-        self._audit("snapshot_rollback", detail=f"version_id={version_id} superseded={cur.rowcount}")
+        self._audit("snapshot_rollback", who=who,
+                    detail=f"version_id={version_id} superseded={cur.rowcount} "
+                           f"skipped_protected={self.last_rollback_skipped}")
         db.commit()
         return cur.rowcount
 

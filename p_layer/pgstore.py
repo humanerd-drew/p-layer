@@ -48,6 +48,7 @@ from .store import (
     WriteDenied,
     _blob_to_vec,
     _check_layer_write,
+    _writable_layers,
     _cosine,
     _vec_to_blob,
     compose_assemble,
@@ -343,7 +344,23 @@ class PgStore:
         finally:
             cur.close()
 
-    def forget(self, knowledge_id: int, reason: str | None = None) -> bool:
+    def forget(self, knowledge_id: int, reason: str | None = None, who: str = "system") -> bool:
+        """Supersede an entry; `who` (the caller) must be allowed to write its layer."""
+        rows = self._execute(
+            "SELECT layer FROM knowledge WHERE id = %s AND superseded_by IS NULL",
+            (knowledge_id,), fetch=True)
+        if not rows:
+            return False
+        layer = rows[0]["layer"]
+        try:
+            _check_layer_write(layer, who)
+        except WriteDenied as exc:
+            self._execute(
+                "INSERT INTO audit_log (action, knowledge_id, layer, who, detail, denied) "
+                "VALUES ('write_denied',%s,%s,%s,%s,TRUE)",
+                (knowledge_id, layer, who, f"forget: {exc}"),
+            )
+            raise
         cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cur.execute(
@@ -360,8 +377,8 @@ class PgStore:
             cur.close()
         if ok:
             self._execute(
-                "INSERT INTO audit_log (action, knowledge_id, detail) VALUES ('forget',%s,%s)",
-                (knowledge_id, reason or "superseded"),
+                "INSERT INTO audit_log (action, knowledge_id, layer, who, detail) VALUES ('forget',%s,%s,%s,%s)",
+                (knowledge_id, layer, who, reason or "superseded"),
             )
         return ok
 
@@ -376,6 +393,16 @@ class PgStore:
                 raise ValueError(f"no knowledge entry #{knowledge_id}")
             if row["superseded_by"] is not None:
                 raise ValueError(f"entry #{knowledge_id} is already superseded")
+            caller = who or "system"
+            try:
+                _check_layer_write(row["layer"], caller)
+            except WriteDenied as exc:
+                self._execute(
+                    "INSERT INTO audit_log (action, knowledge_id, layer, who, detail, denied) "
+                    "VALUES ('write_denied',%s,%s,%s,%s,TRUE)",
+                    (knowledge_id, row["layer"], caller, f"update: {exc}"),
+                )
+                raise
             new_id = self.add_knowledge(
                 content if content is not None else row["content"],
                 type=type or row["type"],
@@ -392,7 +419,7 @@ class PgStore:
             )
             self._execute(
                 "INSERT INTO audit_log (action, knowledge_id, layer, who, detail) VALUES ('update',%s,%s,%s,%s)",
-                (knowledge_id, row["layer"], row["who"], f"superseded_by={new_id}"),
+                (knowledge_id, row["layer"], caller, f"superseded_by={new_id}"),
             )
             return new_id
         finally:
@@ -422,7 +449,7 @@ class PgStore:
         )
         return sid
 
-    def snapshot_rollback(self, version_id: str) -> int:
+    def snapshot_rollback(self, version_id: str, who: str = "system") -> int:
         snap = self._execute(
             "SELECT id, created_at FROM snapshots WHERE version_id = %s", (version_id,), fetch=True)
         if not snap:
@@ -430,9 +457,15 @@ class PgStore:
         cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
             cur.execute(
+                "SELECT COUNT(*) AS c FROM knowledge WHERE superseded_by IS NULL "
+                "AND created_at > %s AND NOT (layer = ANY(%s))",
+                (snap[0]["created_at"], _writable_layers(who)),
+            )
+            self.last_rollback_skipped = int(cur.fetchone()["c"])
+            cur.execute(
                 "UPDATE knowledge SET superseded_by = id, superseded_reason = %s "
-                "WHERE superseded_by IS NULL AND created_at > %s",
-                (f"rollback:{version_id}", snap[0]["created_at"]),
+                "WHERE superseded_by IS NULL AND created_at > %s AND layer = ANY(%s)",
+                (f"rollback:{version_id}", snap[0]["created_at"], _writable_layers(who)),
             )
             n = cur.rowcount
             self._conn.commit()
@@ -442,8 +475,8 @@ class PgStore:
         finally:
             cur.close()
         self._execute(
-            "INSERT INTO audit_log (action, detail) VALUES ('snapshot_rollback',%s)",
-            (f"version_id={version_id} superseded={n}",),
+            "INSERT INTO audit_log (action, who, detail) VALUES ('snapshot_rollback',%s,%s)",
+            (who, f"version_id={version_id} superseded={n} skipped_protected={self.last_rollback_skipped}"),
         )
         return n
 
