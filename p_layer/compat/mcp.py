@@ -136,7 +136,7 @@ def _call_tool(name: str, arguments: dict, db: KnowledgeDB) -> str:
         return json.dumps(results, ensure_ascii=False)
     if name == "knowledge_forget":
         kid = int(arguments.get("id", 0))
-        ok = db._store.forget(kid, reason=arguments.get("reason"))
+        ok = db._store.forget(kid, reason=arguments.get("reason"), who="tool:p-layers")
         return json.dumps({"superseded": ok, "id": kid}, ensure_ascii=False)
     if name == "knowledge_update":
         kid = int(arguments.get("id", 0))
@@ -145,6 +145,7 @@ def _call_tool(name: str, arguments: dict, db: KnowledgeDB) -> str:
             content=arguments.get("fact"),
             type=arguments.get("type"),
             confidence=float(arguments["confidence"]) if arguments.get("confidence") is not None else None,
+            who="tool:p-layers",
         )
         return json.dumps({"updated": True, "superseded_id": kid, "new_id": new_id}, ensure_ascii=False)
     if name == "knowledge_memory-stats":
@@ -155,7 +156,7 @@ def _call_tool(name: str, arguments: dict, db: KnowledgeDB) -> str:
         return json.dumps({"created": True, "version_id": version_id}, ensure_ascii=False)
     if name == "knowledge_snapshot-rollback":
         version_id = arguments.get("version_id", "")
-        n = db._store.snapshot_rollback(version_id)
+        n = db._store.snapshot_rollback(version_id, who="tool:p-layers")
         return json.dumps({"rolled_back": n, "version_id": version_id}, ensure_ascii=False)
     if name == "knowledge_ontology-status":
         stats = db._store.stats()
