@@ -152,12 +152,16 @@ def _call_tool(name: str, arguments: dict, db: KnowledgeDB) -> str:
         return json.dumps(db._store.stats(), ensure_ascii=False)
     if name == "knowledge_snapshot-create":
         version_id = arguments.get("version_id", "")
-        db._store.snapshot_create(version_id, label=arguments.get("label"))
+        db._store.snapshot_create(version_id, label=arguments.get("label"), who="tool:p-layers")
         return json.dumps({"created": True, "version_id": version_id}, ensure_ascii=False)
     if name == "knowledge_snapshot-rollback":
         version_id = arguments.get("version_id", "")
         n = db._store.snapshot_rollback(version_id, who="tool:p-layers")
-        return json.dumps({"rolled_back": n, "version_id": version_id}, ensure_ascii=False)
+        skipped = getattr(db._store, "last_rollback_skipped", 0)
+        return json.dumps(
+            {"rolled_back": n, "version_id": version_id, "skipped_protected": skipped},
+            ensure_ascii=False,
+        )
     if name == "knowledge_ontology-status":
         stats = db._store.stats()
         return json.dumps({
