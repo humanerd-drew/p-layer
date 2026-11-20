@@ -233,7 +233,7 @@ def _call_tool(name: str, arguments: dict, store: Store) -> str:
         )
         return f"✓ updated #{kid} → #{new_id} (old version superseded, history preserved)"
     if name == "snapshot_create":
-        sid = store.snapshot_create(arguments.get("version_id", ""), label=arguments.get("label"))
+        sid = store.snapshot_create(arguments.get("version_id", ""), label=arguments.get("label"), who="tool:p_layer")
         return f"✓ snapshot '{arguments.get('version_id')}' created (#{sid})"
     if name == "snapshot_rollback":
         n = store.snapshot_rollback(arguments.get("version_id", ""), who="tool:p_layer")

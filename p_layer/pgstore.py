@@ -204,6 +204,7 @@ class PgStore:
         self._conn.autocommit = False
         self.semantic_available = HAS_PGVECTOR
         self.last_embed_warning: str | None = None
+        self.last_rollback_skipped: int = 0
         if HAS_PGVECTOR:
             try:
                 register_vector(self._conn)
@@ -393,7 +394,7 @@ class PgStore:
                 raise ValueError(f"no knowledge entry #{knowledge_id}")
             if row["superseded_by"] is not None:
                 raise ValueError(f"entry #{knowledge_id} is already superseded")
-            caller = who or "system"
+            caller = "system" if who is None else who
             try:
                 _check_layer_write(row["layer"], caller)
             except WriteDenied as exc:
@@ -409,7 +410,7 @@ class PgStore:
                 source=row["source"],
                 session_id=row["session_id"],
                 layer=layer or row["layer"],
-                who=who or row["who"],
+                who=caller,
                 confidence=confidence if confidence is not None else row["confidence"],
                 ttl_days=row["ttl_days"],
             )
@@ -425,7 +426,7 @@ class PgStore:
         finally:
             cur.close()
 
-    def snapshot_create(self, version_id: str, label: str | None = None) -> int:
+    def snapshot_create(self, version_id: str, label: str | None = None, who: str = "system") -> int:
         ids = [r["id"] for r in self._execute(
             "SELECT id FROM knowledge WHERE superseded_by IS NULL ORDER BY id", fetch=True)]
         cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -444,8 +445,8 @@ class PgStore:
         finally:
             cur.close()
         self._execute(
-            "INSERT INTO audit_log (action, detail) VALUES ('snapshot_create',%s)",
-            (f"version_id={version_id} entries={len(ids)}",),
+            "INSERT INTO audit_log (action, who, detail) VALUES ('snapshot_create',%s,%s)",
+            (who, f"version_id={version_id} entries={len(ids)}"),
         )
         return sid
 

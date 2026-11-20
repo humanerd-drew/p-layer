@@ -152,6 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     sc = sn_sub.add_parser("create")
     sc.add_argument("version_id")
     sc.add_argument("--label", default=None)
+    sc.add_argument("--who", default="system")
     sr = sn_sub.add_parser("rollback")
     sr.add_argument("version_id")
     sr.add_argument("--who", default="system")
@@ -393,11 +394,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "snapshot":
         if args.snapshot_cmd == "create":
-            sid = store.snapshot_create(args.version_id, label=args.label)
+            sid = store.snapshot_create(args.version_id, label=args.label, who=args.who)
             print(f"✓ snapshot '{args.version_id}' created (#{sid})")
         else:
             n = store.snapshot_rollback(args.version_id, who=args.who)
-            print(f"✓ rolled back to '{args.version_id}': {n} entry(ies) superseded")
+            skipped = getattr(store, "last_rollback_skipped", 0)
+            note = f"; {skipped} protected entry(ies) left unchanged" if skipped else ""
+            print(f"✓ rolled back to '{args.version_id}': {n} entry(ies) superseded{note}")
         return 0
 
     if args.cmd == "rules":

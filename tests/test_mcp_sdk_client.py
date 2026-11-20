@@ -36,8 +36,9 @@ except ImportError:
 )
 class SdkClientTests(unittest.TestCase):
     def test_sdk_client_full_session(self):
-        tmp = tempfile.mkdtemp()
-        env = dict(os.environ, P_LAYER_DB=str(Path(tmp) / "memory.db"), P_LAYER_EMBED="hash")
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        env = dict(os.environ, P_LAYER_DB=str(Path(tmp.name) / "memory.db"), P_LAYER_EMBED="hash")
         params = StdioServerParameters(
             command=sys.executable,
             args=["-m", "p_layer", "serve"],
@@ -46,20 +47,15 @@ class SdkClientTests(unittest.TestCase):
         )
 
         async def scenario():
-            read, write = await stdio_client(params).__aenter__()
-            session = await ClientSession(read, write).__aenter__()
-            try:
-                init = await session.initialize()
-                self.assertEqual(init.serverInfo.name, "p-layers")
-                tools = await session.list_tools()
-                names = {t.name for t in tools.tools}
-                self.assertIn("remember", names)
-                r = await session.call_tool("remember", {"fact": "switched to portone v2", "type": "decision"})
-                self.assertIn("saved #1", r.content[0].text)
-            finally:
-                await session.__aexit__(None, None, None)
-                await read.aclose()
-                await write.aclose()
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    init = await session.initialize()
+                    self.assertEqual(init.serverInfo.name, "p-layers")
+                    tools = await session.list_tools()
+                    names = {t.name for t in tools.tools}
+                    self.assertIn("remember", names)
+                    r = await session.call_tool("remember", {"fact": "switched to portone v2", "type": "decision"})
+                    self.assertIn("saved #1", r.content[0].text)
 
         asyncio.run(scenario())
 

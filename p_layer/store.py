@@ -386,6 +386,7 @@ class Store:
         self.embedder = embedder
         self._db: sqlite3.Connection | None = None
         self.last_embed_warning: str | None = None
+        self.last_rollback_skipped: int = 0
 
     # ── connection ────────────────────────────────────────────
     @property
@@ -546,7 +547,7 @@ class Store:
         # author is never used as the caller's authority. (add_knowledge below
         # checks the destination layer.) Programmatic default caller is "system",
         # matching add_knowledge; untrusted callers (MCP) must pass their own who.
-        caller = who or "system"
+        caller = "system" if who is None else who
         try:
             _check_layer_write(row["layer"], caller)
         except WriteDenied as exc:
@@ -560,7 +561,7 @@ class Store:
             source=row["source"],
             session_id=row["session_id"],
             layer=layer or row["layer"],
-            who=who or row["who"],
+            who=caller,
             confidence=confidence if confidence is not None else row["confidence"],
             ttl_days=row["ttl_days"],
         )
@@ -570,7 +571,7 @@ class Store:
         db.commit()
         return new_id
 
-    def snapshot_create(self, version_id: str, label: str | None = None) -> int:
+    def snapshot_create(self, version_id: str, label: str | None = None, who: str = "system") -> int:
         """Freeze the set of active entry ids under a version label."""
         db = self.db
         ids = [
@@ -584,7 +585,7 @@ class Store:
             (version_id, label, json.dumps(ids), utcnow()),
         )
         db.commit()
-        self._audit("snapshot_create", detail=f"version_id={version_id} entries={len(ids)}")
+        self._audit("snapshot_create", who=who, detail=f"version_id={version_id} entries={len(ids)}")
         db.commit()
         return int(cur.lastrowid)
 

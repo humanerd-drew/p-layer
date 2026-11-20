@@ -157,6 +157,10 @@ budget 안의 한 payload로 받을 수 있다.
 
 - **엔진**: `p_layer.store.Store` — SQLite + FTS5 + 플러그형 임베딩, forward-only 체크섬 마이그레이션. 단일 스키마, 단일 구현.
 - **거버넌스**: P0-P6 레이어 ACL을 쓰기 시점에 강제(`WriteDenied`), supersede-not-delete, 스냅샷/롤백, 전체 감사 로그, 모순 스캔.
+  - 레이어 ACL은 메모리를 변경하는 모든 동작(`remember`, `update`, `forget`, `snapshot_rollback` — 롤백 시 호출자가 쓸 수 없는 레이어는 건너뜀)에서 *호출자(`who`)* 기준으로 적용됩니다. MCP 클라이언트는 항상 `tool`로 동작하므로 P0/P1 항목을 생성·수정·삭제할 수 없습니다. 라이브러리·CLI 호출의 기본값은 `system`이며, 다른 주체로 실행하려면 `who=` / `--who`를 전달하세요.
+  - 비시스템 호출자의 `snapshot_rollback`은 부분 롤백으로 동작합니다. 호출자가 쓸 수 없는 레이어(예: P0)의 항목은 그대로 보존되며, MCP 응답과 감사 로그(`skipped_protected=N`)에 건너뛴 개수가 표시됩니다.
+  - **신뢰 경계:** 호출자 신원은 에이전트가 선택하는 값이 아니라 인터페이스가 고정합니다. MCP 클라이언트는 항상 `tool`이며, 라이브러리·CLI는 기본 `system`(CLI `--who`는 실행 주체가 지정)입니다. 로컬 셸·Python·DB 파일 직접 접근 권한이 있으면 `system`으로 동작하거나 DB 파일을 수정할 수 있으므로, 이 ACL은 MCP를 통해서만 메모리에 접근하는 에이전트 보호용입니다.
+  - **적용 범위:** 이 기능은 *메모리 저장소*만 보호합니다. 에이전트가 파일을 편집하거나 명령을 실행하는 것 자체를 막지는 않으며, `context`가 반환하는 규칙 역시 모델이 따라야 하는 텍스트입니다. 호스트 액션을 차단하려면 에이전트 자체의 권한 차단 규칙이나 `PreToolUse` 훅 등을 함께 사용하세요.
 - **회상**: FTS5 + 시맨틱 하이브리드, RRF 퓨전, 가산 리랭크(confidence + recency + TTL 부스트), superseded 제외, 타입 다양화.
 - **그래프**: 타입이 있는 엔티티/관계 온톨로지 + 제약 검증, explore / trace / 근본 원인 분석 / 전이 폐포 (사이클 안전).
 - **운영 잡**: `reembed`(버전관리 벡터 백필), `consolidate`(episodic → semantic 다이제스트), `compile-wiki`(P5 페이지). SQLite 전용, PostgreSQL에서는 조용히 망가지지 않고 명시적으로 거부.
