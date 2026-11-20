@@ -172,6 +172,10 @@ relevant memories and canonical rules in one bounded payload.
 
 - **Engine**: `p_layer.store.Store` — SQLite + FTS5 + pluggable embeddings, forward-only checksummed migrations. One schema, one implementation.
 - **Governance**: P0-P6 layer ACLs enforced at write time (`WriteDenied`), supersede-not-delete, snapshots/rollback, full audit log, contradiction scan.
+  - Layer ACLs apply to the *caller* on every change to memory: `remember`, `update`, `forget` and `snapshot_rollback` (rollback skips layers the caller may not write). MCP clients act as `tool`, so they cannot create, change, or remove P0/P1 entries. Library and CLI calls default to `system`; pass `who=` / `--who` to act as someone else.
+  - `snapshot_rollback` is a partial rollback for non-system callers: entries in layers the caller may not write (such as P0) are left unchanged. The MCP reply and the audit log (`skipped_protected=N`) say how many were skipped.
+  - **Trust boundary:** the caller identity is fixed by the interface, not chosen by the agent. MCP clients are always `tool`. Library calls and the CLI default to `system`, and the CLI `--who` is chosen by whoever runs it. Anything with local shell, Python, or direct database access can act as `system` or edit the database file, so these ACLs are meant for agents that reach memory only through MCP.
+  - **Scope:** this protects the *memory store*. It does not stop an agent from editing files or running commands, and rules returned by `context` are text the model has to follow. To block host actions, use your agent's own mechanisms (for example Claude Code permission deny rules or `PreToolUse` hooks).
 - **Recall**: hybrid FTS5 + semantic, RRF fusion, additive rerank (confidence + recency + TTL boosts), superseded excluded, type-diversified.
 - **Graph**: typed entity/relation ontology with constraint validation, explore / trace / root-cause analysis / transitive closure (cycle-safe).
 - **Ops jobs**: `reembed` (versioned vector backfill), `consolidate` (episodic → semantic digests), `compile-wiki` (P5 pages). SQLite-only; on PostgreSQL they raise loudly rather than silently degrade.

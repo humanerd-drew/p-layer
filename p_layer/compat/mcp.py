@@ -136,7 +136,7 @@ def _call_tool(name: str, arguments: dict, db: KnowledgeDB) -> str:
         return json.dumps(results, ensure_ascii=False)
     if name == "knowledge_forget":
         kid = int(arguments.get("id", 0))
-        ok = db._store.forget(kid, reason=arguments.get("reason"))
+        ok = db._store.forget(kid, reason=arguments.get("reason"), who="tool:p-layers")
         return json.dumps({"superseded": ok, "id": kid}, ensure_ascii=False)
     if name == "knowledge_update":
         kid = int(arguments.get("id", 0))
@@ -145,18 +145,23 @@ def _call_tool(name: str, arguments: dict, db: KnowledgeDB) -> str:
             content=arguments.get("fact"),
             type=arguments.get("type"),
             confidence=float(arguments["confidence"]) if arguments.get("confidence") is not None else None,
+            who="tool:p-layers",
         )
         return json.dumps({"updated": True, "superseded_id": kid, "new_id": new_id}, ensure_ascii=False)
     if name == "knowledge_memory-stats":
         return json.dumps(db._store.stats(), ensure_ascii=False)
     if name == "knowledge_snapshot-create":
         version_id = arguments.get("version_id", "")
-        db._store.snapshot_create(version_id, label=arguments.get("label"))
+        db._store.snapshot_create(version_id, label=arguments.get("label"), who="tool:p-layers")
         return json.dumps({"created": True, "version_id": version_id}, ensure_ascii=False)
     if name == "knowledge_snapshot-rollback":
         version_id = arguments.get("version_id", "")
-        n = db._store.snapshot_rollback(version_id)
-        return json.dumps({"rolled_back": n, "version_id": version_id}, ensure_ascii=False)
+        n = db._store.snapshot_rollback(version_id, who="tool:p-layers")
+        skipped = getattr(db._store, "last_rollback_skipped", 0)
+        return json.dumps(
+            {"rolled_back": n, "version_id": version_id, "skipped_protected": skipped},
+            ensure_ascii=False,
+        )
     if name == "knowledge_ontology-status":
         stats = db._store.stats()
         return json.dumps({

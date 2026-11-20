@@ -220,7 +220,7 @@ def _call_tool(name: str, arguments: dict, store: Store) -> str:
         return f'📚 {len(results)} result(s) for "{query}":\n' + "\n".join(lines)
     if name == "forget":
         kid = int(arguments.get("id", 0))
-        ok = store.forget(kid, reason=arguments.get("reason"))
+        ok = store.forget(kid, reason=arguments.get("reason"), who="tool:p_layer")
         return f"✓ superseded #{kid}" if ok else f"entry #{kid} not found or already superseded"
     if name == "update":
         kid = int(arguments.get("id", 0))
@@ -229,14 +229,17 @@ def _call_tool(name: str, arguments: dict, store: Store) -> str:
             content=arguments.get("fact"),
             type=arguments.get("type"),
             confidence=float(arguments["confidence"]) if arguments.get("confidence") is not None else None,
+            who="tool:p_layer",
         )
         return f"✓ updated #{kid} → #{new_id} (old version superseded, history preserved)"
     if name == "snapshot_create":
-        sid = store.snapshot_create(arguments.get("version_id", ""), label=arguments.get("label"))
+        sid = store.snapshot_create(arguments.get("version_id", ""), label=arguments.get("label"), who="tool:p_layer")
         return f"✓ snapshot '{arguments.get('version_id')}' created (#{sid})"
     if name == "snapshot_rollback":
-        n = store.snapshot_rollback(arguments.get("version_id", ""))
-        return f"✓ rolled back to '{arguments.get('version_id')}': {n} entry(ies) superseded"
+        n = store.snapshot_rollback(arguments.get("version_id", ""), who="tool:p_layer")
+        skipped = getattr(store, "last_rollback_skipped", 0)
+        note = f"; {skipped} protected entry(ies) left unchanged" if skipped else ""
+        return f"✓ rolled back to '{arguments.get('version_id')}': {n} entry(ies) superseded{note}"
     if name == "memory_stats":
         return json.dumps(store.stats(), ensure_ascii=False, indent=2)
     if name == "assemble":

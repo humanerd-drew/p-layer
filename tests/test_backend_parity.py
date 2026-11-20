@@ -138,6 +138,52 @@ class BackendParityBase:  # mixin — not a TestCase, so unittest never collects
         s.add_knowledge("deploy pipeline is green", type="fact")
         self.assertEqual(s.recall("portone"), [])
 
+    def test_protected_layer_update_forget_denied_for_non_system(self):
+        s = self.make_store()
+        rule = s.add_knowledge("NEVER edit /protected", type="decision", layer="P0", who="system")
+        with self.assertRaises(WriteDenied):
+            s.update_knowledge(rule, content="edits ok", who="tool:p_layer")
+        with self.assertRaises(WriteDenied):
+            s.forget(rule, who="tool:p_layer")
+        denied = s.audit_log(denied_only=True)
+        self.assertEqual(len(denied), 2)
+        new_id = s.update_knowledge(rule, content="NEVER edit /protected or /secrets", who="system")
+        self.assertTrue(s.forget(new_id, who="system"))
+        self.assertEqual(s.recall("protected"), [])
+
+    def test_protected_layer_partial_rollback_skips_p0(self):
+        s = self.make_store()
+        s.snapshot_create("v1", who="tool:p_layer")
+        s.add_knowledge("alpha protected rule", type="decision", layer="P0", who="system")
+        s.add_knowledge("beta disposable note", type="fact", layer="P5", who="tool:p_layer")
+        n = s.snapshot_rollback("v1", who="tool:p_layer")
+        self.assertEqual(n, 1)
+        self.assertEqual(s.last_rollback_skipped, 1)
+        self.assertEqual(len(s.recall("alpha protected rule")), 1)
+        self.assertEqual(s.recall("beta disposable note"), [])
+        audit = s.audit_log(limit=20)
+        rb = [e for e in audit if e["action"] == "snapshot_rollback"][0]
+        sc = [e for e in audit if e["action"] == "snapshot_create"][0]
+        self.assertIn("skipped_protected=1", rb["detail"])
+        self.assertEqual(sc["who"], "tool:p_layer")
+
+    def test_update_default_caller_can_promote_tool_entry(self):
+        s = self.make_store()
+        kid = s.add_knowledge("tentative rule", type="decision", layer="P5", who="tool:p_layer")
+        s.update_knowledge(kid, content="promoted canonical rule", layer="P0")
+        results = s.recall("promoted canonical rule")
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["layer"], "P0")
+        self.assertEqual(results[0]["who"], "system")
+
+    def test_update_empty_who_denied(self):
+        s = self.make_store()
+        rule = s.add_knowledge("NEVER bypass ACL", type="decision", layer="P0", who="system")
+        with self.assertRaises(WriteDenied):
+            s.update_knowledge(rule, content="bypass", who="")
+        with self.assertRaises(WriteDenied):
+            s.forget(rule, who="")
+
 
 class SqliteParityTests(BackendParityBase, unittest.TestCase):
     backend = "sqlite"
