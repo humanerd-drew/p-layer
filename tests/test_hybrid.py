@@ -131,14 +131,17 @@ class AdditiveRerankTests(unittest.TestCase):
 
     def test_recency_boost_favors_newer_entries(self):
         """Within recency window, newer entry gets a higher boost."""
+        from datetime import datetime, timedelta, timezone
         from p_layer.store import rrf_fuse, RerankConfig
 
+        recent_ts = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
         row_new = {"id": 1, "type": "fact", "content": "new entry", "source": "test",
                    "layer": "P5", "who": "system", "confidence": 0.5,
-                   "created_at": "2026-08-20T12:00:00+00:00", "ttl_days": None}
+                   "created_at": recent_ts, "ttl_days": None}
         row_old = {"id": 2, "type": "fact", "content": "old entry", "source": "test",
                    "layer": "P5", "who": "system", "confidence": 0.5,
-                   "created_at": "2025-01-01T12:00:00+00:00", "ttl_days": None}
+                   "created_at": old_ts, "ttl_days": None}
 
         fts = [row_old, row_new]  # FTS gives old first (wrong order)
         sem: list[tuple[float, int]] = []
