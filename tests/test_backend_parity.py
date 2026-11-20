@@ -184,6 +184,31 @@ class BackendParityBase:  # mixin — not a TestCase, so unittest never collects
         with self.assertRaises(WriteDenied):
             s.forget(rule, who="")
 
+    def test_korean_cjk_and_particle_recall_parity(self):
+        s = self.make_store()
+        s.add_knowledge("결제를 PortOne v2로 바꿨다", type="decision", layer="P5")
+        s.add_knowledge("결제 시스템을 안정화했다", type="pattern", layer="P5")
+        s.add_knowledge("전혀 다른 메모", type="fact", layer="P5")
+
+        res_root = s.recall("결제")
+        self.assertEqual(len(res_root), 2)
+        contents_root = [r["content"] for r in res_root]
+        self.assertIn("결제를 PortOne v2로 바꿨다", contents_root)
+        self.assertIn("결제 시스템을 안정화했다", contents_root)
+        self.assertNotIn("전혀 다른 메모", contents_root)
+
+        res_particle = s.recall("결제를")
+        self.assertEqual(len(res_particle), 2)
+
+        res_v2 = s.recall("v2")
+        self.assertEqual([r["content"] for r in res_v2], ["결제를 PortOne v2로 바꿨다"])
+
+        ctx = s.assemble(query="결제")
+        self.assertIn("PortOne v2", ctx)
+        self.assertNotIn("전혀 다른 메모", ctx)
+
+        self.assertEqual(s.recall("존재하지않는단어xyz"), [])
+
 
 class SqliteParityTests(BackendParityBase, unittest.TestCase):
     backend = "sqlite"

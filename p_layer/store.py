@@ -380,10 +380,37 @@ def compose_assemble(rules: list[dict], recent: list[dict], budget_chars: int = 
 
 
 
+_KOREAN_JOSA_RE = re.compile(
+    r"(?:으로|에서|까지|부터|에게|한테|보다|처럼|만큼|조차|마저|이나|라도|이랑|하고|"
+    r"여서|해서|하여|하는|했다|했던|되는|을|를|이|가|은|는|에|의|로|도|만|와|과)$"
+)
+
+
+def _escape_like(term: str) -> str:
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _fts_terms(query: str) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw in query.split():
+        cleaned = re.sub(r"[^\w]+", "", raw)
+        if len(cleaned) <= 1:
+            continue
+        if cleaned not in seen:
+            seen.add(cleaned)
+            terms.append(cleaned)
+        stem = _KOREAN_JOSA_RE.sub("", cleaned)
+        if stem != cleaned and len(stem) >= 2 and stem not in seen:
+            seen.add(stem)
+            terms.append(stem)
+    return terms
+
+
 class Store:
-    def __init__(self, path: str | os.PathLike | None = None, embedder: Embedder | None = None):
+    def __init__(self, path: str | os.PathLike | None = None, embedder: Embedder | str | None = None):
         self.path = Path(path or DEFAULT_DB)
-        self.embedder = embedder
+        self.embedder: Embedder | None = load_embedder(embedder) if isinstance(embedder, str) else embedder
         self._db: sqlite3.Connection | None = None
         self.last_embed_warning: str | None = None
         self.last_rollback_skipped: int = 0
@@ -688,13 +715,12 @@ class Store:
 
     # ── read path ─────────────────────────────────────────────
     def fts_search(self, query: str, limit: int = 30) -> list[dict]:
-        # Sanitize FTS5 query-syntax characters out of each term: a bare
-        # "?" (e.g. a trailing question mark in a real agent query) or a
-        # FTS5 keyword (OR/AND/NOT/NEAR) makes the whole MATCH expression
-        # raise, which used to silently degrade recall to a single-phrase
-        # LIKE that almost never matched. Terms are quoted so keyword
-        # collisions stay valid queries.
-        terms = [t for t in (re.sub(r"[^\w]+", "", w) for w in query.split()) if len(t) > 1]
+        # Sanitize FTS5 query-syntax characters out of each term and extract
+        # Korean particle stems. SQLite unicode61 treats agglutinated CJK
+        # words as single tokens and returns 0 rows without raising, so run
+        # escaped LIKE complement when FTS5 leaves room below `limit`
+        # (matching PgStore's pg_trgm ILIKE parity).
+        terms = _fts_terms(query)
         if not terms:
             return []
         match = " OR ".join(f'"{t}"' for t in terms)
@@ -706,16 +732,25 @@ class Store:
                 (match, limit),
             ).fetchall()
         except sqlite3.OperationalError:
-            # CJK path: unicode61 does not split CJK into words, so MATCH can
-            # never hit there — fall back to per-term LIKE OR (multi-term
-            # recall instead of the old never-matching single phrase).
-            clauses = " OR ".join("k.content LIKE ?" for _ in terms)
-            rows = db.execute(
+            rows = []
+        results = [dict(r) for r in rows]
+        if len(results) < limit:
+            found = [r["id"] for r in results]
+            like_patterns = [f"%{_escape_like(t)}%" for t in terms]
+            or_clauses = " OR ".join("k.content LIKE ? ESCAPE '\\'" for _ in like_patterns)
+            score_expr = " + ".join(
+                "CASE WHEN k.content LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END" for _ in like_patterns
+            )
+            excl = f" AND k.id NOT IN ({','.join('?' for _ in found)})" if found else ""
+            extra = db.execute(
                 f"SELECT {_KNOWLEDGE_COLS} FROM knowledge k "
-                f"WHERE ({clauses}) AND k.superseded_by IS NULL LIMIT ?",
-                [f"%{t}%" for t in terms] + [limit],
+                f"WHERE ({or_clauses}) AND k.superseded_by IS NULL{excl} "
+                f"ORDER BY ({score_expr}) DESC, k.id DESC LIMIT ?",
+                [*like_patterns, *found, *like_patterns, limit - len(results)],
             ).fetchall()
-        return [dict(r) for r in rows]
+            for r in extra:
+                results.append(dict(r))
+        return results
 
     def semantic_search(self, query: str, limit: int = 30) -> list[tuple[float, int]]:
         emb = self._get_embedder()
@@ -811,7 +846,7 @@ class Store:
         include: tuple[str, ...] = ("rules", "recent"),
         query: str | None = None,
         limit: int = 10,
-        use_semantic: bool = True,
+        use_semantic: bool | None = None,
     ) -> str:
         """Assemble rules plus recent or query-relevant knowledge within a budget."""
         rules = self.enabled_rules() if "rules" in include else []
