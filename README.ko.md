@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
 [![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-193%20passed-green)](README.md)
+[![Tests](https://img.shields.io/badge/tests-196%20passed-green)](README.md)
 
 🌏 [README.md](README.md) — English
 
@@ -168,7 +168,7 @@ budget 안의 한 payload로 받을 수 있다.
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — 동일 인터페이스·동작, 공유 패리티 스위트로 검증 (CJK 대응 pg_trgm ILIKE, pgvector 선택).
 - **MCP 서버**: 14개 툴 — 질의 기반 세션 시작용 `context` 포함 — 의존성 0 stdio 구현, 와이어 레벨 테스트로 엔드투엔드 검증 (CI에서 공식 SDK로도).
 - **기존 에이전트 기억에서 마이그레이션**: 이미 운영 중인 에이전트 기억 저장소가 있다면, `import-drewgent`가 기존 `knowledge.db`(knowledge/entities/relations/sessions)를 p_layer로 복사하고, `p_layer.drewdb`는 그 데이터베이스를 p_layer 거버넌스(WAL, busy timeout) 아래 **그 자리에서 열어** 기존 도구를 그대로 쓰면서 p_layer가 연결을 관리하게 한다. `import-rules` / `import-incidents`는 기존 규칙·사건 파일을 이식한다. 준비됐을 때 옮기면 된다 — 잠기지 않는다.
-- **테스트**: 193개 — SQLite + PostgreSQL 패리티, 보호 레이어 호출자 ACL, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징, FTS5 질의 정제 회귀, 가산 리랭크, CLI/context 사용성.
+- **테스트**: 196개 — SQLite + PostgreSQL 패리티, 보호 레이어 호출자 ACL, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징, FTS5 질의 정제 회귀, 가산 리랭크, CLI/context 사용성.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · 패키지: **`p_layer`** · 콘솔: **`p-layer`**
 
 ```bash
