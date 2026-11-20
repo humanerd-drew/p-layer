@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
 [![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-167%20passed-green)](README.md)
+[![Tests](https://img.shields.io/badge/tests-193%20passed-green)](README.md)
 
 **Memory for AI agents with rules that are kept, not just written.**
 
@@ -173,9 +173,9 @@ relevant memories and canonical rules in one bounded payload.
 - **Engine**: `p_layer.store.Store` — SQLite + FTS5 + pluggable embeddings, forward-only checksummed migrations. One schema, one implementation.
 - **Governance**: P0-P6 layer ACLs enforced at write time (`WriteDenied`), supersede-not-delete, snapshots/rollback, full audit log, contradiction scan.
   - Layer ACLs apply to the *caller* on every change to memory: `remember`, `update`, `forget` and `snapshot_rollback` (rollback skips layers the caller may not write). MCP clients act as `tool`, so they cannot create, change, or remove P0/P1 entries. Library and CLI calls default to `system`; pass `who=` / `--who` to act as someone else.
-  - `snapshot_rollback` is a partial rollback for non-system callers: entries in layers the caller may not write (such as P0) are left unchanged. The MCP reply and the audit log (`skipped_protected=N`) say how many were skipped.
-  - **Trust boundary:** the caller identity is fixed by the interface, not chosen by the agent. MCP clients are always `tool`. Library calls and the CLI default to `system`, and the CLI `--who` is chosen by whoever runs it. Anything with local shell, Python, or direct database access can act as `system` or edit the database file, so these ACLs are meant for agents that reach memory only through MCP.
-  - **Scope:** this protects the *memory store*. It does not stop an agent from editing files or running commands, and rules returned by `context` are text the model has to follow. To block host actions, use your agent's own mechanisms (for example Claude Code permission deny rules or `PreToolUse` hooks).
+  - `snapshot_rollback` is a partial rollback for non-system callers: entries in layers the caller may not write (such as P0) are left unchanged. The MCP/CLI reply and the audit log (`skipped_protected=N`) say how many were skipped.
+  - **Trust boundary**: the caller identity is fixed by the interface, not chosen by the agent. MCP clients are always `tool`. Library calls and the CLI default to `system`, and the CLI `--who` is chosen by whoever runs it. Anything with local shell, Python, or direct database access can act as `system` or edit the database file, so these ACLs are meant for agents that reach memory only through MCP.
+  - **Scope**: this protects the *memory store*. It does not stop an agent from editing files or running commands, and rules returned by `context` are text the model has to follow. To block host actions, use your agent's own mechanisms (for example Claude Code permission deny rules or `PreToolUse` hooks).
 - **Recall**: hybrid FTS5 + semantic, RRF fusion, additive rerank (confidence + recency + TTL boosts), superseded excluded, type-diversified.
 - **Graph**: typed entity/relation ontology with constraint validation, explore / trace / root-cause analysis / transitive closure (cycle-safe).
 - **Ops jobs**: `reembed` (versioned vector backfill), `consolidate` (episodic → semantic digests), `compile-wiki` (P5 pages). SQLite-only; on PostgreSQL they raise loudly rather than silently degrade.
@@ -183,7 +183,7 @@ relevant memories and canonical rules in one bounded payload.
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — same interface and behavior, verified by a shared parity suite (pg_trgm ILIKE for CJK, pgvector optional).
 - **MCP server**: 14 tools, including query-aware startup `context`, with a zero-dependency stdio implementation verified end-to-end by wire-level tests (and against the official SDK in CI).
 - **Migration from legacy agent memory**: already running an agent memory store? `import-drewgent` copies a legacy `knowledge.db` (knowledge/entities/relations/sessions) into p_layer, and `p_layer.drewdb` can even *open it in place* under p_layer's governance (WAL, busy timeout) so your existing tools keep working while p_layer takes over the connection. `import-rules` / `import-incidents` bring your existing rule and incident files in. You migrate when you're ready — nothing is locked in.
-- **Tests**: 167 — SQLite + PostgreSQL parity, governance, graph, ops, MCP wire, packaging, FTS5 query sanitization regressions, additive rerank, and CLI UX/context.
+- **Tests**: 193 — SQLite + PostgreSQL parity, protected-layer caller ACLs, governance, graph, ops, MCP wire, packaging, FTS5 query sanitization regressions, additive rerank, and CLI UX/context.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · package: **`p_layer`** · console: **`p-layer`**
 
 ```bash

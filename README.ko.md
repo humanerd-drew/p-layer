@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
 [![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-167%20passed-green)](README.md)
+[![Tests](https://img.shields.io/badge/tests-193%20passed-green)](README.md)
 
 🌏 [README.md](README.md) — English
 
@@ -157,10 +157,10 @@ budget 안의 한 payload로 받을 수 있다.
 
 - **엔진**: `p_layer.store.Store` — SQLite + FTS5 + 플러그형 임베딩, forward-only 체크섬 마이그레이션. 단일 스키마, 단일 구현.
 - **거버넌스**: P0-P6 레이어 ACL을 쓰기 시점에 강제(`WriteDenied`), supersede-not-delete, 스냅샷/롤백, 전체 감사 로그, 모순 스캔.
-  - 레이어 ACL은 메모리를 변경하는 모든 동작(`remember`, `update`, `forget`, `snapshot_rollback` — 롤백 시 호출자가 쓸 수 없는 레이어는 건너뜀)에서 *호출자(`who`)* 기준으로 적용됩니다. MCP 클라이언트는 항상 `tool`로 동작하므로 P0/P1 항목을 생성·수정·삭제할 수 없습니다. 라이브러리·CLI 호출의 기본값은 `system`이며, 다른 주체로 실행하려면 `who=` / `--who`를 전달하세요.
-  - 비시스템 호출자의 `snapshot_rollback`은 부분 롤백으로 동작합니다. 호출자가 쓸 수 없는 레이어(예: P0)의 항목은 그대로 보존되며, MCP 응답과 감사 로그(`skipped_protected=N`)에 건너뛴 개수가 표시됩니다.
-  - **신뢰 경계:** 호출자 신원은 에이전트가 선택하는 값이 아니라 인터페이스가 고정합니다. MCP 클라이언트는 항상 `tool`이며, 라이브러리·CLI는 기본 `system`(CLI `--who`는 실행 주체가 지정)입니다. 로컬 셸·Python·DB 파일 직접 접근 권한이 있으면 `system`으로 동작하거나 DB 파일을 수정할 수 있으므로, 이 ACL은 MCP를 통해서만 메모리에 접근하는 에이전트 보호용입니다.
-  - **적용 범위:** 이 기능은 *메모리 저장소*만 보호합니다. 에이전트가 파일을 편집하거나 명령을 실행하는 것 자체를 막지는 않으며, `context`가 반환하는 규칙 역시 모델이 따라야 하는 텍스트입니다. 호스트 액션을 차단하려면 에이전트 자체의 권한 차단 규칙이나 `PreToolUse` 훅 등을 함께 사용하세요.
+  - 레이어 ACL은 메모리를 바꾸는 모든 경로 — `remember`, `update`, `forget`, `snapshot_rollback`(롤백은 호출자가 쓸 수 없는 레이어를 건너뜀) — 에서 원 작성자가 아닌 *호출자(`who`)* 기준으로 집행된다. MCP 클라이언트는 `tool`로 고정되므로 P0/P1 항목을 만들거나 고치거나 지울 수 없다. 라이브러리와 CLI는 기본 `system`으로 동작하며, 다른 주체로 실행할 때는 `who=` / `--who`를 넘긴다.
+  - 비시스템 호출자의 `snapshot_rollback`은 부분 롤백이다: 호출자가 쓸 수 없는 레이어(예: P0)는 그대로 남고, 건너뛴 개수가 MCP·CLI 응답과 감사 로그(`skipped_protected=N`)에 기록된다.
+  - **신뢰 경계**: 호출자 신원은 에이전트가 고르는 값이 아니라 인터페이스가 고정한다. MCP 클라이언트는 항상 `tool`이고, 라이브러리·CLI는 기본 `system`(CLI `--who`는 실행한 쪽이 지정)이다. 로컬 셸·Python·DB 파일에 직접 접근할 수 있으면 `system`으로 행동하거나 DB 파일을 직접 고칠 수 있으므로, 이 ACL은 MCP로만 메모리에 닿는 에이전트를 위한 장치다.
+  - **적용 범위**: 보호 대상은 *메모리 저장소*다. 에이전트가 파일을 편집하거나 명령을 실행하는 것 자체를 막지는 않으며, `context`가 돌려주는 규칙도 모델이 따라야 하는 텍스트다. 호스트 동작을 막으려면 에이전트 쪽 장치(예: Claude Code 권한 차단 규칙이나 `PreToolUse` 훅)를 함께 쓴다.
 - **회상**: FTS5 + 시맨틱 하이브리드, RRF 퓨전, 가산 리랭크(confidence + recency + TTL 부스트), superseded 제외, 타입 다양화.
 - **그래프**: 타입이 있는 엔티티/관계 온톨로지 + 제약 검증, explore / trace / 근본 원인 분석 / 전이 폐포 (사이클 안전).
 - **운영 잡**: `reembed`(버전관리 벡터 백필), `consolidate`(episodic → semantic 다이제스트), `compile-wiki`(P5 페이지). SQLite 전용, PostgreSQL에서는 조용히 망가지지 않고 명시적으로 거부.
@@ -168,7 +168,7 @@ budget 안의 한 payload로 받을 수 있다.
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — 동일 인터페이스·동작, 공유 패리티 스위트로 검증 (CJK 대응 pg_trgm ILIKE, pgvector 선택).
 - **MCP 서버**: 14개 툴 — 질의 기반 세션 시작용 `context` 포함 — 의존성 0 stdio 구현, 와이어 레벨 테스트로 엔드투엔드 검증 (CI에서 공식 SDK로도).
 - **기존 에이전트 기억에서 마이그레이션**: 이미 운영 중인 에이전트 기억 저장소가 있다면, `import-drewgent`가 기존 `knowledge.db`(knowledge/entities/relations/sessions)를 p_layer로 복사하고, `p_layer.drewdb`는 그 데이터베이스를 p_layer 거버넌스(WAL, busy timeout) 아래 **그 자리에서 열어** 기존 도구를 그대로 쓰면서 p_layer가 연결을 관리하게 한다. `import-rules` / `import-incidents`는 기존 규칙·사건 파일을 이식한다. 준비됐을 때 옮기면 된다 — 잠기지 않는다.
-- **테스트**: 167개 — SQLite + PostgreSQL 패리티, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징, 가산 리랭크, CLI/context 사용성.
+- **테스트**: 193개 — SQLite + PostgreSQL 패리티, 보호 레이어 호출자 ACL, 거버넌스, 그래프, 운영 잡, MCP 와이어, 패키징, FTS5 질의 정제 회귀, 가산 리랭크, CLI/context 사용성.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · 패키지: **`p_layer`** · 콘솔: **`p-layer`**
 
 ```bash
