@@ -15,7 +15,7 @@ import sys
 from .store import KNOWLEDGE_TYPES, Store
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "p-layers", "version": "0.9.3"}
+SERVER_INFO = {"name": "p-layers", "version": "0.10.0"}
 
 TOOLS = [
     {

@@ -168,6 +168,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("serve", help="run the MCP stdio server")
 
+    ui_p = sub.add_parser("ui", help="launch the read-only 2D/3D interactive Memory Graph web UI")
+    ui_p.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
+    ui_p.add_argument("--port", type=int, default=8765, help="bind port (default: 8765)")
+    ui_p.add_argument("--no-open", action="store_true", help="do not auto-open browser")
+    ui_p.add_argument("--allow-remote", action="store_true", help="allow binding outside loopback")
+
     imp = sub.add_parser("import-drewgent", help="import a drewgent knowledge.db into p_layer")
     imp.add_argument("src", help="path to drewgent knowledge.db")
     imp.add_argument("--no-embed", action="store_true")
@@ -190,7 +196,22 @@ def _command_prefix(args) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.cmd == "ui":
+        from .ui import serve_ui
+
+        try:
+            return serve_ui(
+                args.db or DEFAULT_DB,
+                host=args.host,
+                port=args.port,
+                open_browser=not args.no_open,
+                allow_remote=args.allow_remote,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+
     store = _make_store(args)
 
     if args.cmd == "init":
