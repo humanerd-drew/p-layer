@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/p-layers?color=blue)](https://pypi.org/project/p-layers/)
 [![Python](https://img.shields.io/pypi/pyversions/p-layers)](https://pypi.org/project/p-layers/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-200%20passed-green)](README.md)
+[![Tests](https://img.shields.io/badge/tests-205%20passed-green)](README.md)
 
 **Memory for AI agents with rules that are kept, not just written.**
 
@@ -138,11 +138,15 @@ p-layer --db ~/.p_layer/memory.db --embed hash remember "we switched to PortOne 
 p-layer --db ~/.p_layer/memory.db --embed hash recall "payment" --why
 p-layer --db ~/.p_layer/memory.db --embed hash context "current payment task"
 p-layer --db ~/.p_layer/memory.db --embed hash doctor
+p-layer --db ~/.p_layer/memory.db ui   # open read-only 2D/3D memory graph in browser
 ```
 
 `init` creates the store and prints the next commands. `status` is safe to run
 before initialization; `doctor` checks the schema, integrity, FTS index, and
-embedding configuration. Call `context` once at session start to retrieve
+embedding configuration. `ui` starts a loopback-only (`127.0.0.1:8765`),
+strictly read-only interactive 3D/2D memory graph server with live SSE updates
+over `knowledge` (`P0`–`P6`), `rules`, ontology `entities`/`relations`, and `audit_log`.
+Call `context` once at session start to retrieve
 task-relevant memory and place canonical rules first within the budget. Add
 `--why` to `recall` to see each result's source, session, and creation time.
 No separate database or service is required; the memory is one file.
@@ -183,7 +187,7 @@ relevant memories and canonical rules in one bounded payload.
 - **PostgreSQL**: `p_layer.pgstore.PgStore` — same interface and behavior, verified by a shared parity suite (pg_trgm ILIKE for CJK, pgvector optional).
 - **MCP server**: 14 tools, including query-aware startup `context`, with a zero-dependency stdio implementation verified end-to-end by wire-level tests (and against the official SDK in CI).
 - **Migration from legacy agent memory**: already running an agent memory store? `import-drewgent` copies a legacy `knowledge.db` (knowledge/entities/relations/sessions) into p_layer, and `p_layer.drewdb` can even *open it in place* under p_layer's governance (WAL, busy timeout) so your existing tools keep working while p_layer takes over the connection. `import-rules` / `import-incidents` bring your existing rule and incident files in. You migrate when you're ready — nothing is locked in.
-- **Tests**: 200 — SQLite + PostgreSQL parity, protected-layer caller ACLs, Korean/CJK recall parity, governance, graph, ops, MCP wire, packaging, FTS5 query sanitization regressions, additive rerank, and CLI UX/context.
+- **Tests**: 205 — SQLite + PostgreSQL parity, protected-layer caller ACLs, Korean/CJK recall parity, governance, graph, read-only 2D/3D web UI (`p-layer ui`), ops, MCP wire, packaging, FTS5 query sanitization regressions, additive rerank, and CLI UX/context.
 - PyPI: **`p-layers`** · GitHub: **`p-layer`** · package: **`p_layer`** · console: **`p-layer`**
 
 ```bash
