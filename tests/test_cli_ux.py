@@ -71,6 +71,38 @@ class CliUxTests(unittest.TestCase):
         self.assertEqual(report["status"], "ok")
         self.assertEqual(report["counts"]["knowledge"], 2)
 
+    def test_korean_readme_quickstart_roundtrip(self):
+        code, _ = self.run_cli("status", "--json")
+        self.assertEqual(code, 0)
+        code, _ = self.run_cli("init")
+        self.assertEqual(code, 0)
+        code, _ = self.run_cli(
+            "remember",
+            "결제를 PortOne v2로 바꿨다",
+            "--type",
+            "decision",
+            "--source",
+            "onboarding",
+        )
+        self.assertEqual(code, 0)
+        code, _ = self.run_cli("remember", "무관한 서버 점검 기록", "--type", "fact")
+        self.assertEqual(code, 0)
+
+        code, recall_out = self.run_cli("recall", "결제", "--why")
+        self.assertEqual(code, 0)
+        self.assertIn("PortOne v2", recall_out)
+        self.assertIn("source=onboarding", recall_out)
+        self.assertNotIn("무관한 서버 점검 기록", recall_out)
+
+        code, ctx_out = self.run_cli("context", "현재 결제 작업")
+        self.assertEqual(code, 0)
+        self.assertIn("PortOne v2", ctx_out)
+        self.assertNotIn("무관한 서버 점검 기록", ctx_out)
+
+        code, doc_out = self.run_cli("doctor", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(doc_out)["status"], "ok")
+
 
 if __name__ == "__main__":
     unittest.main()

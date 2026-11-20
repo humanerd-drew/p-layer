@@ -48,6 +48,8 @@ from .store import (
     WriteDenied,
     _blob_to_vec,
     _check_layer_write,
+    _escape_like,
+    _fts_terms,
     _writable_layers,
     _cosine,
     _vec_to_blob,
@@ -189,14 +191,14 @@ class PgStore:
 
     backend = "postgresql"
 
-    def __init__(self, dsn: str | None = None, embedder: Embedder | None = None,
+    def __init__(self, dsn: str | None = None, embedder: Embedder | str | None = None,
                  vector_dim: int = DEFAULT_VECTOR_DIM):
         self.dsn = dsn or DEFAULT_DSN
         if not self.dsn:
             raise ValueError("PgStore needs a DSN (arg or P_LAYER_PG_DSN)")
         if not HAS_PSYCOPG2:
             raise ImportError("PgStore requires psycopg2: pip install psycopg2-binary")
-        self.embedder = embedder
+        self.embedder: Embedder | None = load_embedder(embedder) if isinstance(embedder, str) else embedder
         self.vector_dim = vector_dim
         # statement_timeout turns lock-wait hangs into clean errors (prod safety).
         self._conn = psycopg2.connect(self.dsn, connect_timeout=10,
@@ -588,7 +590,7 @@ class PgStore:
         return {r["id"]: _row(r) for r in rows}
 
     def fts_search(self, query: str, limit: int = 30) -> list[dict]:
-        terms = [w for w in query.split() if len(w) > 1]
+        terms = _fts_terms(query)
         if not terms:
             return []
         q = " ".join(terms)
@@ -610,9 +612,9 @@ class PgStore:
                 break
             extra = self._execute(
                 f"SELECT {cols} FROM knowledge k "
-                "WHERE k.content ILIKE %s AND k.superseded_by IS NULL AND k.id NOT IN (SELECT unnest(%s::bigint[])) "
+                "WHERE k.content ILIKE %s ESCAPE '\\' AND k.superseded_by IS NULL AND k.id NOT IN (SELECT unnest(%s::bigint[])) "
                 "ORDER BY k.id LIMIT %s",
-                (f"%{term}%", list(found) or [0], limit - len(results)),
+                (f"%{_escape_like(term)}%", list(found) or [0], limit - len(results)),
                 fetch=True,
             )
             for r in extra:
@@ -681,9 +683,21 @@ class PgStore:
         )
         return [_row(r) for r in rows]
 
-    def assemble(self, budget_chars: int = 12000, include: tuple[str, ...] = ("rules", "recent")) -> str:
+    def assemble(
+        self,
+        budget_chars: int = 12000,
+        include: tuple[str, ...] = ("rules", "recent"),
+        query: str | None = None,
+        limit: int = 10,
+        use_semantic: bool | None = None,
+    ) -> str:
         rules = self.enabled_rules() if "rules" in include else []
-        recent = self.recent_knowledge(limit=50) if "recent" in include else []
+        if "recent" not in include:
+            recent = []
+        elif query:
+            recent = self.recall(query, limit=limit, use_semantic=use_semantic)
+        else:
+            recent = self.recent_knowledge(limit=50)
         return compose_assemble(rules, recent, budget_chars)
 
     def audit_log(self, limit: int = 50, denied_only: bool = False) -> list[dict]:

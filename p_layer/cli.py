@@ -234,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         results = store.recall(
             args.query,
             limit=args.limit,
-            use_semantic=not args.no_semantic,
+            use_semantic=False if args.no_semantic else None,
             serendipity=args.serendipity,
         )
         if args.json:
@@ -270,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
             budget_chars=args.budget,
             query=args.query,
             limit=args.limit,
-            use_semantic=not args.no_semantic,
+            use_semantic=False if args.no_semantic else None,
         )
         if args.json:
             print(json.dumps({"query": args.query, "context": assembled}, ensure_ascii=False))

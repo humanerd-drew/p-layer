@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from p_layer.embed import HashEmbedder
+from p_layer.embed import HashEmbedder, NoopEmbedder
 from p_layer.store import Store
 
 
@@ -100,6 +100,23 @@ class StoreTests(unittest.TestCase):
         self.assertLess(out.index("never expose secrets"), out.index("payments use PortOne v2"))
         self.assertEqual(out.count("payments use PortOne v2"), 1)
         self.assertNotIn("blue green", out)
+
+    def test_string_embedder_shorthand_and_like_wildcard_escape(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        s = Store(str(Path(tmp.name) / "memory.db"), embedder="hash")
+        self.addCleanup(s.close)
+        self.assertIsInstance(s._get_embedder(), HashEmbedder)
+        s.add_knowledge("pass_rate is 100%", type="fact")
+        s.add_knowledge("passXrate is unrelated", type="fact")
+
+        hits = s.recall("pass_rate")
+        self.assertEqual([r["content"] for r in hits], ["pass_rate is 100%"])
+
+        s_none = Store(str(Path(tmp.name) / "none.db"), embedder="none")
+        self.addCleanup(s_none.close)
+        self.assertIsInstance(s_none._get_embedder(), NoopEmbedder)
+        self.assertFalse(s_none._get_embedder().available())
 
 
 if __name__ == "__main__":
