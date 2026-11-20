@@ -16,7 +16,7 @@ The eval harness proves the thesis: recall@k vs the drewgent baseline, plus
 ACL compliance, in one command (`p_layer eval suite.json`).
 """
 
-__version__ = "0.9.1"
+__version__ = "0.9.2"
 
 from .store import (
     Store,
